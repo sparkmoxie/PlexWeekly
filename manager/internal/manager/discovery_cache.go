@@ -141,7 +141,7 @@ func sanitizeCachedDiscovery(stored TautulliDiscoveryResult) (TautulliDiscoveryR
 	}
 	seenUsers := map[string]struct{}{}
 	for _, user := range stored.Users {
-		id := discoveryID(user.ID)
+		id := discoveryUserID(user.ID)
 		if id == "" {
 			continue
 		}

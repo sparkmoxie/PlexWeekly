@@ -775,13 +775,13 @@ func TestNonCancellableDeliverySurvivesManagerRestartAndReconcilesResult(t *test
 	}
 }
 
-func TestTautulliUserIDValidationIncludesLocalOwner(t *testing.T) {
-	for _, value := range []string{"0", "1", "18446744073709551615"} {
+func TestTautulliUserIDValidationExcludesReservedLocal(t *testing.T) {
+	for _, value := range []string{"1", "001", "18446744073709551615"} {
 		if !validTautulliUserID(value) {
 			t.Fatalf("valid Tautulli user ID %q was rejected", value)
 		}
 	}
-	for _, value := range []string{"", "-1", "not-numeric", "18446744073709551616", "000000000000000000000"} {
+	for _, value := range []string{"0", "00", "00000000000000000000", "", "-1", "not-numeric", "18446744073709551616", "000000000000000000000"} {
 		if validTautulliUserID(value) {
 			t.Fatalf("invalid Tautulli user ID %q was accepted", value)
 		}

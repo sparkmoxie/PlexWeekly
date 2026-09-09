@@ -646,7 +646,9 @@ func parseAndValidateConfigValue(raw json.RawMessage, definition configDefinitio
 		seen := make(map[string]struct{}, len(items))
 		for rawID, rawAddress := range items {
 			id := strings.TrimSpace(rawID)
-			if !validTautulliUserID(id) {
+			// Preserve legacy Local mappings as inert config. Recipient discovery
+			// and delivery reject zero; upgrading must not invalidate other users.
+			if !validTautulliUserID(id) && !reservedTautulliUserID(id) {
 				return nil, "Every delivery-address key must be a valid numeric Tautulli user ID."
 			}
 			if _, duplicate := seen[id]; duplicate {

@@ -237,16 +237,19 @@ func DiscoverTautulliChoices(ctx context.Context, root string, request TautulliD
 	detailErr := tautulliCommand(checkContext, client, base, apiKey, "get_users", &rawUsers)
 	legacyRules := normalizedLegacyExclusionRules(values["ExcludedEmails"])
 	users, matchedLegacyRules := normalizeDiscoveredUsers(rawNames, rawUsers, legacyRules)
+	// A successful roster containing only Local is valid but has no recipients.
+	hasReservedRosterEntry := nameErr == nil && hasReservedDiscoveredUser(rawNames) || detailErr == nil && hasReservedDiscoveredUser(rawUsers)
 	var tableErr error
 	if nameErr != nil || detailErr != nil || len(users) == 0 || matchedLegacyRules < len(legacyRules) {
 		var table tautulliUsersTable
 		tableErr = tautulliCommandWithParams(checkContext, client, base, apiKey, "get_users_table", discoveryTableParams(), &table)
 		if tableErr == nil {
+			hasReservedRosterEntry = hasReservedRosterEntry || hasReservedDiscoveredUser(table.Data)
 			rawUsers = mergeDiscoveredUserDetails(rawUsers, table.Data)
 			users, matchedLegacyRules = normalizeDiscoveredUsers(rawNames, rawUsers, legacyRules)
 		}
 	}
-	if len(users) == 0 {
+	if len(users) == 0 && !hasReservedRosterEntry {
 		cause := nameErr
 		if cause == nil {
 			cause = detailErr
@@ -327,14 +330,14 @@ func normalizeDiscoveredUsers(names, details []map[string]any, legacyRules map[s
 		ids = append(ids, id)
 	}
 	for _, value := range details {
-		id := discoveryID(value["user_id"])
+		id := discoveryUserID(value["user_id"])
 		if id != "" {
 			detailsByID[id] = value
 			addID(id)
 		}
 	}
 	for _, value := range names {
-		id := discoveryID(value["user_id"])
+		id := discoveryUserID(value["user_id"])
 		if id != "" {
 			nameByID[id] = sanitizeEvidence(fmt.Sprint(value["friendly_name"]), 100)
 			addID(id)
@@ -386,18 +389,19 @@ func mergeDiscoveredUserDetails(primary, fallback []map[string]any) []map[string
 	result := make([]map[string]any, 0, len(primary)+len(fallback))
 	byID := make(map[string]map[string]any, len(primary)+len(fallback))
 	for _, source := range primary {
+		id := discoveryUserID(source["user_id"])
+		if id == "" {
+			continue
+		}
 		copyOfSource := make(map[string]any, len(source))
 		for key, value := range source {
 			copyOfSource[key] = value
 		}
-		id := discoveryID(copyOfSource["user_id"])
-		if id != "" {
-			byID[id] = copyOfSource
-		}
+		byID[id] = copyOfSource
 		result = append(result, copyOfSource)
 	}
 	for _, source := range fallback {
-		id := discoveryID(source["user_id"])
+		id := discoveryUserID(source["user_id"])
 		if id == "" {
 			continue
 		}
@@ -483,6 +487,9 @@ func suggestedPreviewUserID(users []DiscoveredUser) string {
 	owners := []string{}
 	administrators := []string{}
 	for _, user := range users {
+		if !validTautulliUserID(user.ID) {
+			continue
+		}
 		switch user.Role {
 		case "owner":
 			owners = append(owners, user.ID)
@@ -510,6 +517,23 @@ func discoveryID(value any) string {
 		}
 	}
 	return text
+}
+
+func discoveryUserID(value any) string {
+	id := discoveryID(value)
+	if !validTautulliUserID(id) {
+		return ""
+	}
+	return id
+}
+
+func hasReservedDiscoveredUser(users []map[string]any) bool {
+	for _, user := range users {
+		if reservedTautulliUserID(discoveryID(user["user_id"])) {
+			return true
+		}
+	}
+	return false
 }
 
 func sanitizeNumericEvidence(value any) string {

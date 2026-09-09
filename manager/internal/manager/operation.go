@@ -618,8 +618,14 @@ func validTautulliUserID(value string) bool {
 	if value == "" || len(value) > 20 {
 		return false
 	}
-	_, err := strconv.ParseUint(value, 10, 64)
-	return err == nil
+	id, err := strconv.ParseUint(value, 10, 64)
+	return err == nil && id != 0
+}
+
+// Tautulli reserves numeric zero for unauthenticated/unknown playback, not a
+// newsletter recipient. Keep this separate from the library ID contract.
+func reservedTautulliUserID(value string) bool {
+	return value != "" && len(value) <= 20 && strings.Trim(value, "0") == ""
 }
 
 func validOperationRecord(record OperationRecord) bool {

@@ -401,6 +401,14 @@ function Save-AccessState {
         Set-Content -Path $AccessStatePath -Encoding UTF8
 }
 
+function Test-TautulliLocalUserId {
+    param([string]$Id)
+
+    # Tautulli reserves numeric ID 0 for anonymous/unknown playback, not a
+    # newsletter identity. A real user named Local is still a valid user.
+    return (-not [string]::IsNullOrWhiteSpace($Id) -and $Id.Trim() -match '^0+$')
+}
+
 function Add-AccessStateUser {
     param(
         [object]$State,
@@ -409,7 +417,7 @@ function Add-AccessStateUser {
     )
 
     $id = [string]$User.user_id
-    if ([string]::IsNullOrWhiteSpace($id)) { return }
+    if ([string]::IsNullOrWhiteSpace($id) -or (Test-TautulliLocalUserId -Id $id)) { return }
 
     $entry = [PSCustomObject]@{
         UserId         = $id
@@ -448,7 +456,7 @@ function Sync-AccessRoster {
 
     foreach ($u in $users) {
         $id = [string]$u.user_id
-        if ([string]::IsNullOrWhiteSpace($id)) { continue }
+        if ([string]::IsNullOrWhiteSpace($id) -or (Test-TautulliLocalUserId -Id $id)) { continue }
 
         # Only baseline/track users that currently have active access.
         if ((Safe-Int $u.is_active) -eq 0) { continue }
@@ -480,6 +488,7 @@ function Test-UserNeedsWelcome {
         [string]$UserId
     )
 
+    if (Test-TautulliLocalUserId -Id $UserId) { return $false }
     if ($null -eq $State -or $null -eq $State.Users) { return $false }
 
     $prop = $State.Users.PSObject.Properties[[string]$UserId]
@@ -519,6 +528,7 @@ function Mark-UserWelcomed {
         [string]$UserId
     )
 
+    if (Test-TautulliLocalUserId -Id $UserId) { return }
     if ($null -eq $State -or $null -eq $State.Users) { return }
 
     $prop = $State.Users.PSObject.Properties[[string]$UserId]
@@ -936,10 +946,17 @@ function Get-TautulliUser {
     if ([string]::IsNullOrWhiteSpace($Id)) {
         throw "A Tautulli user ID is required."
     }
+    $Id = $Id.Trim()
+    if (Test-TautulliLocalUserId -Id $Id) {
+        throw "Tautulli Local user ID 0 is not a newsletter recipient."
+    }
 
     try {
         $directUser = Invoke-TautulliApi -Command "get_user" -Parameters @{ user_id = $Id }
-        if ($null -ne $directUser) { return $directUser }
+        $directId = (Get-OptionalStringProperty -InputObject $directUser -Name "user_id").Trim()
+        # A failed Tautulli lookup can succeed with the reserved Local record.
+        # Accept only the requested identity, never a fallback or another user.
+        if ($null -ne $directUser -and $directId -eq $Id) { return $directUser }
     }
     catch {
         # Some Tautulli installations return a valid bulk roster while
@@ -948,7 +965,7 @@ function Get-TautulliUser {
 
     $matches = @(
         Get-TautulliUsers | Where-Object {
-            [string](Get-OptionalStringProperty -InputObject $_ -Name "user_id") -eq $Id
+            (Get-OptionalStringProperty -InputObject $_ -Name "user_id").Trim() -eq $Id
         }
     )
     if ($matches.Count -eq 1) { return $matches[0] }
@@ -960,11 +977,15 @@ function Get-TautulliUser {
 }
 
 function Get-TautulliUserNames {
-    return @(Invoke-TautulliApi -Command "get_user_names")
+    return @(Invoke-TautulliApi -Command "get_user_names" | Where-Object {
+        -not (Test-TautulliLocalUserId -Id (Get-OptionalStringProperty -InputObject $_ -Name "user_id"))
+    })
 }
 
 function Get-TautulliUsers {
-    return @(Invoke-TautulliApi -Command "get_users")
+    return @(Invoke-TautulliApi -Command "get_users" | Where-Object {
+        -not (Test-TautulliLocalUserId -Id (Get-OptionalStringProperty -InputObject $_ -Name "user_id"))
+    })
 }
 
 function Resolve-TautulliUserId {
@@ -975,6 +996,9 @@ function Resolve-TautulliUserId {
     }
 
     $needle = $Identifier.Trim()
+    if (Test-TautulliLocalUserId -Id $needle) {
+        throw "Tautulli Local user ID 0 is not a newsletter recipient."
+    }
     $users = Get-TautulliUsers
 
     $matches = @(
@@ -3269,6 +3293,10 @@ function Get-BingeChampion {
                 }
             }
         }
+
+        # Anonymous activity may contribute to server totals, but it cannot
+        # win a personalized award as if it belonged to one identified user.
+        if (Test-TautulliLocalUserId -Id $userId) { continue }
 
         $friendlyName = ""
         foreach ($propertyName in @("friendly_name","user","username")) {
@@ -9359,6 +9387,7 @@ function Get-NewsletterUser {
 function Get-UserSkipReason {
     param([object]$User)
 
+    if (Test-TautulliLocalUserId -Id ([string]$User.UserId)) { return "excludedUserId" }
     if ($User.DeletedUser -gt 0 -or $User.IsActive -eq 0) { return "inactiveOrDeleted" }
 
     if ($null -ne $Config.PSObject.Properties["ExcludedUserIds"]) {

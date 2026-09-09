@@ -542,6 +542,13 @@ Tautulli record has no native email. Its validated email controls update the
 private `UserEmailOverrides` object by stable numeric user ID; multiple users
 may intentionally share one inbox. Clearing a value removes that assignment,
 while assignments for IDs absent from the current discovery remain preserved.
+Tautulli's reserved **Local** user ID `0` represents unidentified or
+unauthenticated activity, not a managed Plex profile. It is automatically
+excluded from newsletter discovery, address-needed counts, personalized
+generation, welcome tracking, delivery, and cache recipient coverage. No
+manual exclusion is needed, and a saved fallback address cannot enable it.
+This rule uses the reserved ID, not the name: a real nonzero user named Local
+remains supported. Tautulli's anonymous playback history is not deleted.
 Tautulli's legacy `do_notify` notification-agent value does not
 grant or revoke TautWeekly delivery; explicit `ExcludedUserIds` and
 `ExcludedEmails` remain the administrator-controlled opt-out policy. SendAll
@@ -559,6 +566,10 @@ same effective recipient; Preview and every TestEmail mode remain isolated to
 the selected sample user and configured `TestEmail`. Removing a mapping does
 not alter welcome/history state and returns an otherwise eligible native-blank
 user to `missingEmail` until another address is assigned.
+
+An individual user lookup must identify the exact requested user. If Tautulli
+returns its Local fallback or a different user, TautWeekly tries an exact
+matching bulk-roster entry and otherwise stops that lookup as unavailable.
 
 Saving an assignment change regenerates previews and, when the deleted-item
 cache is enabled, refreshes recipient coverage. Discovery retains only the
