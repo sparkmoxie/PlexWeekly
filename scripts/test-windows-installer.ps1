@@ -351,25 +351,6 @@ try {
                 }
             }
         }
-        # The synthetic retained-Funnel shutdown intentionally leaves its
-        # privileged helper waiting for a callback after the Manager is forced
-        # down. Stop only helpers launched from this isolated test installation
-        # so they cannot hold the disposable program directory open.
-        $isolatedHelperPath = [IO.Path]::GetFullPath((Join-Path $installRoot 'TAILSCALE-HELPER.ps1'))
-        $isolatedHelpers = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
-            [string]$_.CommandLine -and [string]$_.CommandLine.IndexOf($isolatedHelperPath, [StringComparison]::OrdinalIgnoreCase) -ge 0
-        })
-        foreach ($isolatedHelper in $isolatedHelpers) {
-            $helperProcess = Get-Process -Id ([int]$isolatedHelper.ProcessId) -ErrorAction SilentlyContinue
-            if ($null -eq $helperProcess) { continue }
-            try {
-                Stop-Process -Id $helperProcess.Id -Force -ErrorAction SilentlyContinue
-                [void]$helperProcess.WaitForExit(10000)
-            }
-            finally {
-                $helperProcess.Dispose()
-            }
-        }
     }
     # Explicit uninstall remains fail-closed. Return the synthetic state to Off
     # before that separate lifecycle test so no host Tailscale client is used.
