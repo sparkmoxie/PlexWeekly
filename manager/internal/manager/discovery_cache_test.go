@@ -20,6 +20,7 @@ func TestTautulliDiscoveryStorePersistsOnlyCurrentSanitizedChoices(t *testing.T)
 		},
 		Users: []DiscoveredUser{
 			{ID: "1", Name: "Fictional Admin\r\nIgnored", Eligibility: "eligible", Role: "administrator", LegacyRuleExcluded: true},
+			{ID: "2", Name: "Fictional Managed", Eligibility: "address-needed", NeedsDeliveryAddress: true},
 		},
 		SuggestedPreviewUserID: "999",
 		LegacyRuleCount:        2,
@@ -29,7 +30,7 @@ func TestTautulliDiscoveryStorePersistsOnlyCurrentSanitizedChoices(t *testing.T)
 		t.Fatal(err)
 	}
 	loaded := store.Load(revision)
-	if loaded == nil || !loaded.Retained || loaded.SuggestedPreviewUserID != "1" || len(loaded.Libraries) != 1 || len(loaded.Users) != 1 || !loaded.Users[0].LegacyRuleExcluded || loaded.LegacyRuleCount != 2 || loaded.MatchedLegacyRuleCount != 1 {
+	if loaded == nil || !loaded.Retained || loaded.SuggestedPreviewUserID != "1" || len(loaded.Libraries) != 1 || len(loaded.Users) != 2 || !loaded.Users[0].LegacyRuleExcluded || !loaded.Users[1].NeedsDeliveryAddress || loaded.LegacyRuleCount != 2 || loaded.MatchedLegacyRuleCount != 1 {
 		t.Fatalf("unexpected cached discovery: %+v", loaded)
 	}
 	if strings.Contains(loaded.Libraries[0].Name, "\r") || strings.Contains(loaded.Users[0].Name, "\n") {

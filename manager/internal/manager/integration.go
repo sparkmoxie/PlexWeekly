@@ -46,11 +46,12 @@ type DiscoveredLibrary struct {
 }
 
 type DiscoveredUser struct {
-	ID                 string `json:"id"`
-	Name               string `json:"name"`
-	Eligibility        string `json:"eligibility"`
-	Role               string `json:"role,omitempty"`
-	LegacyRuleExcluded bool   `json:"legacyRuleExcluded,omitempty"`
+	ID                   string `json:"id"`
+	Name                 string `json:"name"`
+	Eligibility          string `json:"eligibility"`
+	NeedsDeliveryAddress bool   `json:"needsDeliveryAddress,omitempty"`
+	Role                 string `json:"role,omitempty"`
+	LegacyRuleExcluded   bool   `json:"legacyRuleExcluded,omitempty"`
 }
 
 type TautulliDiscoveryResult struct {
@@ -354,19 +355,25 @@ func normalizeDiscoveredUsers(names, details []map[string]any, legacyRules map[s
 			name = "User " + id
 		}
 		eligibility := "unknown"
+		needsDeliveryAddress := false
 		legacyRuleExcluded := false
 		if hasDetails {
 			eligibility = "skipped"
 			email := discoveredUserEmail(detail)
-			if integrationTruthy(detail["is_active"]) && email != "" && email != "<nil>" {
-				eligibility = "eligible"
+			if integrationTruthy(detail["is_active"]) {
+				if email != "" && email != "<nil>" {
+					eligibility = "eligible"
+				} else {
+					eligibility = "address-needed"
+					needsDeliveryAddress = true
+				}
 			}
 			if _, excluded := legacyRules[email]; excluded {
 				legacyRuleExcluded = true
 				matchedLegacyRules[email] = struct{}{}
 			}
 		}
-		result = append(result, DiscoveredUser{ID: id, Name: name, Eligibility: eligibility, Role: discoveredUserRole(detail), LegacyRuleExcluded: legacyRuleExcluded})
+		result = append(result, DiscoveredUser{ID: id, Name: name, Eligibility: eligibility, NeedsDeliveryAddress: needsDeliveryAddress, Role: discoveredUserRole(detail), LegacyRuleExcluded: legacyRuleExcluded})
 		if len(result) == maximumDiscoveryChoices {
 			break
 		}

@@ -2,8 +2,8 @@
 
 (() => {
   const now = () => new Date().toISOString();
-  const DEMO_VERSION = "0.25.5";
-  const PREVIOUS_VERSION = "0.25.4";
+  const DEMO_VERSION = "0.26.0";
+  const PREVIOUS_VERSION = "0.25.5";
   const PROFILES = {
     windows: { runtimeMode: "windows", runtimeProfile: "native-windows", packageKind: "windows-installer", label: "Windows" },
     nas: { runtimeMode: "nas", runtimeProfile: "server", packageKind: "container-compose", label: "NAS / Docker" },
@@ -54,7 +54,8 @@
   const users = userNames.map((name, index) => ({
     id: String(41001 + index),
     name,
-    eligibility: "eligible",
+    eligibility: index === 2 ? "address-needed" : "eligible",
+    ...(index === 2 ? { needsDeliveryAddress: true } : {}),
     ...(index === 0 ? { role: "administrator" } : {}),
   }));
   const libraries = [
@@ -105,6 +106,7 @@
     field("IncludedLibraryIds", "Included library IDs", "Advanced", "string-list", ["11", "12", "13"]),
     field("ExcludedUserIds", "Excluded user IDs", "Advanced", "string-list", ["41005", "41012"]),
     field("ExcludedEmails", "Excluded email addresses", "Advanced", "email-list", []),
+    field("UserEmailOverrides", "Managed-user delivery addresses", "Advanced", "user-email-map", { "41003": "family-inbox@example.org" }, { help: "Private fallback addresses for active users whose Tautulli account has no native email." }),
   ];
 
   const integration = {
@@ -386,8 +388,8 @@
       exists: true,
       valid: true,
       state: "ready",
-      fields: editorFields.map((item) => item.type === "secret"
-        ? { name: item.name, type: item.type, secret: { configured: true } }
+      fields: editorFields.map((item) => ["secret", "user-email-map"].includes(item.type)
+        ? { name: item.name, type: "secret", secret: { configured: true } }
         : { name: item.name, type: item.type, value: item.value }),
     };
   }
@@ -563,11 +565,12 @@
         plan.warmCache = plan.cacheEnabled;
       }
       else if (name.startsWith("CustomTextCard")) { categories.add("custom-text-card"); plan.generatePreviews = true; }
-      else if (["IncludedLibraryIds", "ExcludedUserIds", "ExcludedEmails"].includes(name)) { categories.add("libraries"); plan.generatePreviews = true; plan.warmCache = plan.cacheEnabled; }
+      else if (name === "IncludedLibraryIds") { categories.add("libraries"); plan.generatePreviews = true; plan.warmCache = plan.cacheEnabled; }
+      else if (["ExcludedUserIds", "ExcludedEmails", "UserEmailOverrides"].includes(name)) { categories.add("recipients"); plan.generatePreviews = true; plan.warmCache = plan.cacheEnabled; }
       else if (["DaysBack", "RecentAccessDays", "WatchedPercent", "MaxMovies", "MaxTv"].includes(name)) { categories.add("newsletter"); plan.generatePreviews = true; plan.warmCache = plan.cacheEnabled; }
       else categories.add("newsletter");
     }
-    plan.changedCategories = ["tautulli", "plex", "smtp", "identity", "email", "schedule", "newsletter", "cache", "custom-text-card", "libraries"].filter((name) => categories.has(name));
+    plan.changedCategories = ["tautulli", "plex", "smtp", "identity", "email", "schedule", "newsletter", "cache", "custom-text-card", "libraries", "recipients"].filter((name) => categories.has(name));
     plan.retainedDiscovery = !plan.runDiscovery;
     plan.retainedIntegration = !plan.runIntegration;
     plan.retainedSmtp = !plan.runSmtp;

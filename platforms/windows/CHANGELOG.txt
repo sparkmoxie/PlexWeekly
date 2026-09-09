@@ -1,6 +1,12 @@
 TAUTWEEKLY FOR PLEX PORTABLE CHANGELOG
 ===============================
 
+v1.12.0 Windows
+---------------
+- adds private fallback delivery addresses for active Tautulli users without native email
+- keeps native email authoritative, applies existing exclusions to the effective address, and preserves TestEmail isolation
+- omits fallback addresses from sanitized discovery, operation results, diagnostics, and shareable cache reports
+
 v1.11.0 Windows
 ---------------
 - replaces private Tailscale Serve/VPN access with password-gated public HTTPS Funnel access for ordinary remote browsers

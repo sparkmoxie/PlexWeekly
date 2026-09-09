@@ -533,6 +533,36 @@ if (-not (Test-Path $ConfigPath)) {
 }
 
 $Config = Get-Content -Path $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+
+function Test-TautWeeklyDeliveryEmailAddress {
+    param([string]$Address)
+
+    if ([string]::IsNullOrWhiteSpace($Address) -or $Address.Length -gt 254) { return $false }
+    try {
+        $parsed = New-Object System.Net.Mail.MailAddress($Address)
+        return [string]$parsed.Address -ceq $Address
+    }
+    catch { return $false }
+}
+
+function Assert-TautWeeklyUserEmailOverrides {
+    $property = $Config.PSObject.Properties['UserEmailOverrides']
+    if ($null -eq $property -or $null -eq $property.Value) { return }
+    $entries = @($property.Value.PSObject.Properties)
+    if ($entries.Count -gt 2000) { throw 'UserEmailOverrides supports at most 2000 assignments.' }
+    foreach ($entry in $entries) {
+        $id = ([string]$entry.Name).Trim()
+        [UInt64]$parsedUserId = 0
+        if ($id -notmatch '^\d{1,20}$' -or -not [UInt64]::TryParse($id, [ref]$parsedUserId)) { throw 'UserEmailOverrides keys must be valid numeric Tautulli user IDs.' }
+        if ($entry.Value -isnot [string]) { throw "UserEmailOverrides[$id] must be an email-address string." }
+        $address = ([string]$entry.Value).Trim()
+        if (-not [string]::IsNullOrWhiteSpace($address) -and -not (Test-TautWeeklyDeliveryEmailAddress -Address $address)) {
+            throw "UserEmailOverrides[$id] is not a valid email address of 254 characters or fewer."
+        }
+    }
+}
+
+Assert-TautWeeklyUserEmailOverrides
 . (Join-Path $ScriptRoot "DeletedItemCache.ps1")
 Initialize-TautWeeklyDeletedItemCache `
     -CacheRoot (Join-Path (Join-Path $ScriptRoot "cache") "deleted-items") `
@@ -9307,11 +9337,19 @@ function Get-NewsletterUser {
         $friendly = "there"
     }
 
+    $nativeEmail = Get-OptionalStringProperty -InputObject $u -Name "email"
+    $deliveryEmail = $nativeEmail
+    if ([string]::IsNullOrWhiteSpace($deliveryEmail) -and $null -ne $Config.PSObject.Properties['UserEmailOverrides']) {
+        $override = $Config.UserEmailOverrides.PSObject.Properties[(Get-OptionalStringProperty -InputObject $u -Name "user_id")]
+        if ($null -ne $override) { $deliveryEmail = ([string]$override.Value).Trim() }
+    }
+
     return [PSCustomObject]@{
         UserId       = Get-OptionalStringProperty -InputObject $u -Name "user_id"
         Username     = Get-OptionalStringProperty -InputObject $u -Name "username"
         FriendlyName = $friendly
-        Email        = Get-OptionalStringProperty -InputObject $u -Name "email"
+        Email        = $nativeEmail
+        DeliveryEmail = $deliveryEmail
         IsActive     = Safe-Int (Get-OptionalStringProperty -InputObject $u -Name "is_active")
         DeletedUser  = Safe-Int (Get-OptionalStringProperty -InputObject $u -Name "deleted_user")
         DoNotify     = Safe-Int (Get-OptionalStringProperty -InputObject $u -Name "do_notify")
@@ -9322,7 +9360,6 @@ function Get-UserSkipReason {
     param([object]$User)
 
     if ($User.DeletedUser -gt 0 -or $User.IsActive -eq 0) { return "inactiveOrDeleted" }
-    if ([string]::IsNullOrWhiteSpace([string]$User.Email)) { return "missingEmail" }
 
     if ($null -ne $Config.PSObject.Properties["ExcludedUserIds"]) {
         foreach ($id in @($Config.ExcludedUserIds)) {
@@ -9330,9 +9367,11 @@ function Get-UserSkipReason {
         }
     }
 
+    if ([string]::IsNullOrWhiteSpace([string]$User.DeliveryEmail)) { return "missingEmail" }
+
     if ($null -ne $Config.PSObject.Properties["ExcludedEmails"]) {
         foreach ($email in @($Config.ExcludedEmails)) {
-            if ([string]$email -ieq [string]$User.Email) { return "excludedEmail" }
+            if ([string]$email -ieq [string]$User.DeliveryEmail) { return "excludedEmail" }
         }
     }
 
@@ -9444,8 +9483,9 @@ if ($Mode -eq "SendWelcome") {
     $script:TautWeeklyResultErrorCategory = "tautulli-unavailable"
     $resolvedUserId = Resolve-TautulliUserId -Identifier $UserId
     $user = Get-NewsletterUser -Id $resolvedUserId
-    if ([string]::IsNullOrWhiteSpace([string]$user.Email)) {
-        throw "This user does not have an email address available."
+    $welcomeSkipReason = Get-UserSkipReason -User $user
+    if (-not [string]::IsNullOrWhiteSpace($welcomeSkipReason)) {
+        throw "This user is not eligible for welcome delivery: $welcomeSkipReason."
     }
     $recipientPlatform = Get-NewsletterLastPlatform -ExpectedUserId $user.UserId
     $recipientWatchedMovies = Get-RecipientWatchedMovies -ExpectedUserId $user.UserId
@@ -9585,9 +9625,9 @@ if ($Mode -eq "SendWelcome") {
     $subject = Get-OneOffWelcomeSubject -User $user
 
     $script:TautWeeklyResultErrorCategory = "smtp-failed"
-    Write-Log "Sending ONE-OFF welcome to $($user.FriendlyName) <$($user.Email)>..."
+    Write-Log "Sending ONE-OFF welcome to $($user.FriendlyName) <$($user.DeliveryEmail)>..."
     Send-NewsletterMail `
-        -To $user.Email `
+        -To $user.DeliveryEmail `
         -Subject $subject `
         -Html $html `
         -PlainText $plain `
@@ -10404,10 +10444,10 @@ if ($Mode -eq "SendAll") {
             $subject = Get-NewsletterSubject -User $result.User -RecentAccess $result.RecentAccess
 
             $script:TautWeeklyResultErrorCategory = "smtp-failed"
-            Write-Log "Sending to $($result.User.FriendlyName) <$($result.User.Email)>..."
+            Write-Log "Sending to $($result.User.FriendlyName) <$($result.User.DeliveryEmail)>..."
             $attemptedSmtp = $true
             Send-NewsletterMail `
-                -To $result.User.Email `
+                -To $result.User.DeliveryEmail `
                 -Subject $subject `
                 -Html $result.Html `
                 -PlainText $result.Plain `

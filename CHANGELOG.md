@@ -6,6 +6,21 @@ the structure of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-09-09
+
+### Added
+
+- Add private `UserEmailOverrides` assignments for active Tautulli managed users who have no native email address. Manager shows a separate accessible card only for those users, accepts shared inboxes, preserves temporarily undiscovered assignments, and lets clearing an assignment restore the normal missing-email result.
+
+### Changed
+
+- Resolve production recipients in the fixed order inactive/deleted, stable-ID exclusion, native Tautulli email or managed-user fallback, missing email, then effective-address exclusion. A native email can never be rerouted by the fallback map; `SendAll`, `SendWelcome`, and cache coverage use the effective address while every TestEmail mode remains isolated.
+- Treat changes to managed-user assignments as recipient coverage changes, regenerating previews and refreshing enabled deleted-item cache coverage through the existing post-save workflow.
+
+### Security
+
+- Keep managed-user addresses only in private `config.json` and its private backups. Sanitized discovery, retained choice caches, configuration summaries, operation results, diagnostics, and shareable cache reports expose only an address-needed flag or aggregate counts—not the mapping or an address.
+
 ## [0.25.5] - 2026-09-01
 
 ### Fixed

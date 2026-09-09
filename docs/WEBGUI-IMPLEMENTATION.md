@@ -40,7 +40,8 @@ An administrator should be able to install a package, open one local URL, and:
 
 1. Complete first-run setup without editing JSON or using a terminal.
 2. Test Tautulli and optional direct Plex connectivity.
-3. Choose included libraries and excluded recipients.
+3. Choose included libraries and excluded recipients, and privately assign
+   fallback addresses to active managed users without native Tautulli email.
 4. Configure SMTP and send a controlled test message.
 5. Generate and inspect all newsletter preview states.
 6. Install, enable, disable, verify, or remove the schedule.
@@ -545,6 +546,10 @@ uses `/identity` plus authenticated `/library/sections`. The implemented
 and user display choices. The matching GET route restores the locally retained
 choices only when their saved configuration revision still matches. The cache
 excludes service addresses, email addresses, credentials, and raw responses.
+For an active user without native email it may return only
+`needsDeliveryAddress=true`; the private `UserEmailOverrides` map remains in
+authenticated configuration editing and is never written to the discovery
+cache or shareable diagnostics.
 The separate implemented
 `POST /api/v1/checks/smtp-network` route permits routable private or public
 unicast SMTP providers and stops after DNS/TCP, greeting, EHLO, and

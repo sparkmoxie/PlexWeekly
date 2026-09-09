@@ -18,7 +18,8 @@ func TestReadRedactedConfig(t *testing.T) {
   "SmtpPassword": "fictional-password",
   "ScheduleEnabled": false,
   "SchedulerPollSeconds": 30,
-  "IncludedLibraryIds": ["1", "4"]
+  "IncludedLibraryIds": ["1", "4"],
+  "UserEmailOverrides": {"42":"private-managed@example.org"}
 }`
 	if err := os.WriteFile(filepath.Join(root, "config.json"), []byte(config), 0o600); err != nil {
 		t.Fatal(err)
@@ -32,7 +33,7 @@ func TestReadRedactedConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, secret := range []string{"fictional-secret", "fictional-password"} {
+	for _, secret := range []string{"fictional-secret", "fictional-password", "private-managed@example.org"} {
 		if strings.Contains(string(encoded), secret) {
 			t.Fatalf("redacted response contains secret %q", secret)
 		}
@@ -42,6 +43,7 @@ func TestReadRedactedConfig(t *testing.T) {
 	assertConfigField(t, view, "ScheduleEnabled", "boolean", false)
 	assertConfigField(t, view, "SchedulerPollSeconds", "number", false)
 	assertConfigField(t, view, "IncludedLibraryIds", "array", false)
+	assertConfigField(t, view, "UserEmailOverrides", "secret", true)
 }
 
 func TestReadRedactedConfigRejectsTrailingJSON(t *testing.T) {

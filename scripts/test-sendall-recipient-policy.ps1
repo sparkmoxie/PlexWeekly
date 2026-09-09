@@ -113,6 +113,56 @@ $scenarios = @(
         Reasons = @(1, 1, 1, 1)
     },
     [PSCustomObject]@{
+        Name = 'managed-fallback-native-precedence-shared-inbox'
+        Users = @(
+            (New-VirtualUser -Id '1' -Email ''),
+            (New-VirtualUser -Id '2' -Email 'native2@example.com'),
+            (New-VirtualUser -Id '3' -Email '')
+        )
+        UserEmailOverrides = [ordered]@{
+            '1' = 'shared-managed@example.com'
+            '2' = 'must-not-reroute@example.com'
+            '3' = 'shared-managed@example.com'
+        }
+        ExcludedUserIds = @()
+        ExcludedEmails = @()
+        RejectRecipient = ''
+        FreshAccessState = $false
+        ExitCode = 0
+        Outcome = 'succeeded'
+        ErrorCategory = ''
+        Accepted = 3
+        Skipped = 0
+        Failed = 0
+        Reasons = @(0, 0, 0, 0)
+        ExpectedRecipients = @('shared-managed@example.com', 'native2@example.com', 'shared-managed@example.com')
+        ExpectedConnections = 3
+    },
+    [PSCustomObject]@{
+        Name = 'managed-fallback-exclusion-precedence'
+        Users = @(
+            (New-VirtualUser -Id '10' -Email ''),
+            (New-VirtualUser -Id '11' -Email ''),
+            (New-VirtualUser -Id '12' -Email '')
+        )
+        UserEmailOverrides = [ordered]@{
+            '11' = 'blocked-managed@example.com'
+        }
+        ExcludedUserIds = @('10')
+        ExcludedEmails = @('blocked-managed@example.com')
+        RejectRecipient = ''
+        FreshAccessState = $false
+        ExitCode = 3
+        Outcome = 'failed'
+        ErrorCategory = 'no-eligible-recipients'
+        Accepted = 0
+        Skipped = 3
+        Failed = 0
+        Reasons = @(0, 1, 1, 1)
+        ExpectedRecipients = @()
+        ExpectedConnections = 0
+    },
+    [PSCustomObject]@{
         Name = 'all-explicitly-excluded'
         Users = @(
             (New-VirtualUser -Id '1' -Email 'viewer1@example.com'),
@@ -400,6 +450,7 @@ foreach ($engine in $engines) {
                     TautulliUrl = $baseUrl; ApiKey = 'virtual-api-key'; PlexServerUrl = $baseUrl; PlexToken = 'virtual-plex-token'
                     FooterServerName = 'Virtual Plex'; IncludedLibraryIds = @('10', '20')
                     ExcludedUserIds = @($scenario.ExcludedUserIds); ExcludedEmails = @($scenario.ExcludedEmails)
+                    UserEmailOverrides = (Get-ScenarioValue -Scenario $scenario -Name 'UserEmailOverrides' -Default ([ordered]@{}))
                     DaysBack = 7; MaxMovies = 2; MaxTv = 2; SendDelaySeconds = [int](Get-ScenarioValue -Scenario $scenario -Name 'SendDelay' -Default 0)
                     SmtpHost = '127.0.0.1'; SmtpPort = $smtpPort; SmtpEnableSsl = $false; SmtpUseAuthentication = ($fakeSmtpMode -eq 'auth-failure'); SmtpTimeoutSeconds = 5
                     SmtpUsername = 'virtual-sender@example.com'; SmtpPassword = 'virtual-app-password'; SmtpAuthenticationMethod = 'Auto'
@@ -490,6 +541,18 @@ foreach ($engine in $engines) {
                         ForEach-Object { $_ | ConvertFrom-Json }
                 )
                 $connections = @($smtpCalls | Where-Object { [string]$_.command -eq '<connection>' })
+				$expectedRecipientsProperty = $scenario.PSObject.Properties['ExpectedRecipients']
+				if ($null -ne $expectedRecipientsProperty) {
+					$actualRecipients = @(
+						$smtpCalls |
+							ForEach-Object { [string]$_.command } |
+							Where-Object { $_ -match '^RCPT TO:<([^>]+)>$' } |
+							ForEach-Object { [regex]::Match($_, '^RCPT TO:<([^>]+)>$').Groups[1].Value }
+					)
+					$actualSorted = @($actualRecipients | Sort-Object)
+					$expectedSorted = @(@($expectedRecipientsProperty.Value) | Sort-Object)
+					Assert-True (($actualSorted -join ',') -ceq ($expectedSorted -join ',')) "$($engine.Name)/$($scenario.Name) sent to '$($actualSorted -join ',')' instead of '$($expectedSorted -join ',')'."
+				}
                 $expectedConnections = [int](Get-ScenarioValue -Scenario $scenario -Name 'ExpectedConnections' -Default -1)
                 if ($expectedConnections -ge 0) {
                     Assert-True ($connections.Count -eq $expectedConnections) "$($engine.Name)/$($scenario.Name) opened $($connections.Count) SMTP connections instead of $expectedConnections."
@@ -532,6 +595,100 @@ foreach ($engine in $engines) {
                     foreach ($privateValue in $privateValues) {
                         Assert-True (-not $resultRaw.Contains($privateValue)) "$($engine.Name)/$($scenario.Name) exposed a recipient identity in its structured result."
                     }
+                }
+				$userEmailOverrides = Get-ScenarioValue -Scenario $scenario -Name 'UserEmailOverrides' -Default ([ordered]@{})
+				foreach ($entry in $userEmailOverrides.GetEnumerator()) {
+					Assert-True (-not $resultRaw.Contains([string]$entry.Value)) "$($engine.Name)/$($scenario.Name) exposed a managed-user delivery address in its structured result."
+				}
+				if ($scenario.Name -eq 'managed-fallback-native-precedence-shared-inbox') {
+					$recipientBaseline = @($smtpCalls | Where-Object { [string]$_.command -match '^RCPT TO:' }).Count
+					$cacheResultPath = Join-Path $tempRoot ("result-managed-cache-$($engine.Name).json")
+					$cacheStdout = Join-Path $tempRoot ("renderer-managed-cache-$($engine.Name).stdout.txt")
+					$cacheStderr = Join-Path $tempRoot ("renderer-managed-cache-$($engine.Name).stderr.txt")
+					$testResultPath = Join-Path $tempRoot ("result-managed-test-$($engine.Name).json")
+					$testStdout = Join-Path $tempRoot ("renderer-managed-test-$($engine.Name).stdout.txt")
+					$testStderr = Join-Path $tempRoot ("renderer-managed-test-$($engine.Name).stderr.txt")
+					$welcomeResultPath = Join-Path $tempRoot ("result-managed-welcome-$($engine.Name).json")
+					$welcomeStdout = Join-Path $tempRoot ("renderer-managed-welcome-$($engine.Name).stdout.txt")
+					$welcomeStderr = Join-Path $tempRoot ("renderer-managed-welcome-$($engine.Name).stderr.txt")
+					$oldManagedDataRoot = $env:TAUTWEEKLY_DATA_DIR
+					$oldManagedConfig = $env:TAUTWEEKLY_CONFIG
+					try {
+						if ($engine.Container) {
+							$env:TAUTWEEKLY_DATA_DIR = $dataRoot
+							$env:TAUTWEEKLY_CONFIG = $configPath
+						}
+						$cacheProcess = Start-Process -FilePath $engine.Host -ArgumentList @(
+							'-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $headlessRunner,
+							'-RendererPath', (Join-Path $appRoot 'TautWeekly.ps1'), '-ConfigPath', $configPath,
+							'-Mode', 'CacheWarm', '-ResultPath', $cacheResultPath
+						) -Wait -PassThru @processWindowArgs -RedirectStandardOutput $cacheStdout -RedirectStandardError $cacheStderr
+						$testProcess = Start-Process -FilePath $engine.Host -ArgumentList @(
+							'-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $headlessRunner,
+							'-RendererPath', (Join-Path $appRoot 'TautWeekly.ps1'), '-ConfigPath', $configPath,
+							'-UserId', '1', '-Mode', 'SendTest', '-ResultPath', $testResultPath
+						) -Wait -PassThru @processWindowArgs -RedirectStandardOutput $testStdout -RedirectStandardError $testStderr
+						$welcomeProcess = Start-Process -FilePath $engine.Host -ArgumentList @(
+							'-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $appRoot 'TautWeekly.ps1'),
+							'-ConfigPath', $configPath, '-UserId', '1', '-Mode', 'SendWelcome',
+							'-ConfirmWelcome', '-ResultPath', $welcomeResultPath
+						) -Wait -PassThru @processWindowArgs -RedirectStandardOutput $welcomeStdout -RedirectStandardError $welcomeStderr
+					}
+					finally {
+						$env:TAUTWEEKLY_DATA_DIR = $oldManagedDataRoot
+						$env:TAUTWEEKLY_CONFIG = $oldManagedConfig
+					}
+					if ($cacheProcess.ExitCode -ne 0 -or $testProcess.ExitCode -ne 0 -or $welcomeProcess.ExitCode -ne 0) {
+						throw "$($engine.Name) managed CacheWarm/TestEmail/SendWelcome flow failed.`nCACHE:`n$(Get-Content $cacheStdout -Raw -ErrorAction SilentlyContinue)`nTEST:`n$(Get-Content $testStdout -Raw -ErrorAction SilentlyContinue)`nWELCOME:`n$(Get-Content $welcomeStdout -Raw -ErrorAction SilentlyContinue)"
+					}
+					$cacheOutput = Get-Content -LiteralPath $cacheStdout -Raw -Encoding UTF8
+					$cacheResult = Get-Content -LiteralPath $cacheResultPath -Raw -Encoding UTF8
+					Assert-True ($cacheOutput.Contains('Eligible users checked: 3')) "$($engine.Name) CacheWarm did not treat mapped users as eligible."
+					Assert-True (-not $cacheResult.Contains('shared-managed@example.com')) "$($engine.Name) exposed the mapped address in a CacheWarm result."
+					$managedCalls = @(
+						Get-Content -LiteralPath $smtpLog -ErrorAction SilentlyContinue |
+							Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+							ForEach-Object { $_ | ConvertFrom-Json }
+					)
+					$newRecipients = @(
+						$managedCalls |
+							Where-Object { [string]$_.command -match '^RCPT TO:<([^>]+)>$' } |
+							Select-Object -Skip $recipientBaseline |
+							ForEach-Object { [regex]::Match([string]$_.command, '^RCPT TO:<([^>]+)>$').Groups[1].Value }
+					)
+					Assert-True (($newRecipients -join ',') -ceq 'test@example.com,shared-managed@example.com') "$($engine.Name) did not isolate SendTest to TestEmail and route SendWelcome to the mapped address: $($newRecipients -join ',')."
+					foreach ($resultFile in @($testResultPath, $welcomeResultPath)) {
+						$managedResult = Get-Content -LiteralPath $resultFile -Raw -Encoding UTF8
+						Assert-True (-not $managedResult.Contains('shared-managed@example.com')) "$($engine.Name) exposed the mapped address in a renderer result."
+					}
+				}
+                if ($scenario.Name -eq 'managed-fallback-exclusion-precedence') {
+                    $blockedWelcomeResultPath = Join-Path $tempRoot ("result-managed-blocked-welcome-$($engine.Name).json")
+                    $blockedWelcomeStdout = Join-Path $tempRoot ("renderer-managed-blocked-welcome-$($engine.Name).stdout.txt")
+                    $blockedWelcomeStderr = Join-Path $tempRoot ("renderer-managed-blocked-welcome-$($engine.Name).stderr.txt")
+                    $oldBlockedDataRoot = $env:TAUTWEEKLY_DATA_DIR
+                    $oldBlockedConfig = $env:TAUTWEEKLY_CONFIG
+                    try {
+                        if ($engine.Container) {
+                            $env:TAUTWEEKLY_DATA_DIR = $dataRoot
+                            $env:TAUTWEEKLY_CONFIG = $configPath
+                        }
+                        $blockedWelcome = Start-Process -FilePath $engine.Host -ArgumentList @(
+                            '-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $appRoot 'TautWeekly.ps1'),
+                            '-ConfigPath', $configPath, '-UserId', '11', '-Mode', 'SendWelcome',
+                            '-ConfirmWelcome', '-ResultPath', $blockedWelcomeResultPath
+                        ) -Wait -PassThru @processWindowArgs -RedirectStandardOutput $blockedWelcomeStdout -RedirectStandardError $blockedWelcomeStderr
+                    }
+                    finally {
+                        $env:TAUTWEEKLY_DATA_DIR = $oldBlockedDataRoot
+                        $env:TAUTWEEKLY_CONFIG = $oldBlockedConfig
+                    }
+                    Assert-True ($blockedWelcome.ExitCode -ne 0) "$($engine.Name) SendWelcome bypassed ExcludedEmails for a managed-user effective address."
+                    $blockedCalls = @(
+                        Get-Content -LiteralPath $smtpLog -ErrorAction SilentlyContinue |
+                            Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+                    )
+                    Assert-True ($blockedCalls.Count -eq 0) "$($engine.Name) SendWelcome contacted SMTP for an excluded managed-user effective address."
                 }
                 if ($scenario.Name -eq 'auth-failure-stops-batch') {
                     $testAllResultPath = Join-Path $tempRoot ("result-test-all-auth-failure-$($engine.Name).json")

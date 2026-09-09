@@ -124,7 +124,8 @@ existing data and documents the old Mac-image compatibility window.
 The responsive Manager is the primary workflow on every maintained package:
 
 - **Set up and configure:** Dashboard guides first run; Config manages
-  connections, SMTP, branding, library scope, delivery exclusions, schedule,
+  connections, SMTP, branding, library scope, delivery exclusions, private
+  fallback addresses for managed users without native Tautulli email, schedule,
   rolling backups, and the optional custom newsletter text card—including its
   six-choice local title GIF selector—without hand-editing JSON. Stored secrets
   remain write-only.
@@ -151,6 +152,9 @@ The responsive Manager is the primary workflow on every maintained package:
   top movie genre keep discovery useful even during quieter weeks.
 - **Personal recaps:** Each recipient sees their own watch time, viewing
   highlights, and movie **Watched** marks.
+- **Managed profiles:** An active Tautulli user without native email can receive
+  a personalized recap through an administrator-assigned private fallback;
+  native email always wins and existing exclusions still apply.
 - **Binge Champion:** A privacy-preserving award celebrates the week's
   leading viewer.
 - **Adaptive layouts:** Welcome, active-week, quiet-week, and milestone

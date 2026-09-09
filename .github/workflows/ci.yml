@@ -176,6 +176,7 @@ jobs:
           node scripts/test-manager-header-refresh.mjs
           node scripts/test-manager-preview-refresh.mjs
           node scripts/test-manager-cache-verification.mjs
+          node scripts/test-manager-user-email-overrides.mjs
           python3 scripts/test-manager-accessibility.py
       - name: Validate shell, PowerShell 7, and workflow syntax
         run: |

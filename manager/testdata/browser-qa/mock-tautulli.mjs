@@ -11,7 +11,9 @@ const users = Array.from({ length: 78 }, (_, index) => ({
     ? "viewer@example.com"
     : index === 1
       ? "unmatched-legacy@example.org"
-      : `viewer${index + 1}@example.org`,
+      : index === 2
+        ? ""
+        : `viewer${index + 1}@example.org`,
   is_active: 1,
   do_notify: 1,
   is_admin: index === 0 ? 1 : 0,

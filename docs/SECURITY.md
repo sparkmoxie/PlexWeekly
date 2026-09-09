@@ -2,8 +2,9 @@
 
 ## Secrets at rest
 
-`config.json` stores a Tautulli API key and SMTP password in plain text, and may
-store a Plex token. Limit filesystem access to the account that runs
+`config.json` stores a Tautulli API key and SMTP password in plain text, may
+store a Plex token, and may contain private managed-user fallback addresses in
+`UserEmailOverrides`. Limit filesystem access to the account that runs
 TautWeekly for Plex. Docker installations use `UMASK=077` and a non-root UID/GID;
 Windows installations should use a private directory with appropriate NTFS
 permissions. Native Linux uses a dedicated service account and mode-0700
@@ -204,6 +205,15 @@ Disabling the feature stops access but does not erase the existing cache.
 - Do not bypass the confirmation switches or wrapper prompts.
 
 ## Recipient privacy
+
+Managed-user fallback addresses are private configuration, not discovery data.
+Authenticated Config editing can read and change the map, and private backups
+contain it. Sanitized discovery and its retained cache expose only whether an
+active native-email-blank user needs an address; config summaries, operation
+results, diagnostics, and shareable cache reports omit the map and addresses.
+Production uses a fallback only when Tautulli has no native email and evaluates
+the effective address against the existing exclusion policy. TestEmail modes
+never use the fallback map.
 
 Scheduled weekly messages share only the Binge Champion's anonymous aggregate:
 total watch time, total plays, and nonzero unique movie and TV-show counts. When

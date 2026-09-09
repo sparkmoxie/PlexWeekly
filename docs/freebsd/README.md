@@ -8,7 +8,14 @@ backups in `/var/db/tautweekly`.
 
 [Open the FreeBSD Podman Quickstart](https://sparkmoxie.github.io/TautWeekly/freebsd/)
 
-Current source baseline: **1.3.0**.
+Current source baseline: **1.4.0**.
+
+Manager Config shows a separate **Managed-user delivery addresses** card when
+Tautulli reports an active user without native email. Assignments stay in
+private `/var/db/tautweekly/config.json` and its backups, may share an inbox,
+and never override a native address. Existing user-ID and effective-address
+exclusions still apply; TestEmail remains isolated. See the
+[configuration reference](../CONFIGURATION.md#interactive-user-exclusions).
 
 ## Supported target
 

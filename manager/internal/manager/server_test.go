@@ -599,6 +599,12 @@ func TestDiscoveryLiveFailureKeepsCacheAndReportsSanitizedStage(t *testing.T) {
 	defer tautulli.Close()
 
 	root := integrationConfigRoot(t, tautulli.URL, secret, "", "")
+	mappingRequest := validConfigSaveRequest(t, ReadConfigEditor(root))
+	mappingRequest.Values["UserEmailOverrides"] = json.RawMessage(`{"7":"retained-managed@example.org"}`)
+	mappingResult, mappingFields, err := SaveConfig(root, mappingRequest, time.Now)
+	if err != nil || !mappingResult.Saved || len(mappingFields) != 0 {
+		t.Fatalf("seed managed-user mapping: saved=%t fields=%v err=%v", mappingResult.Saved, mappingFields, err)
+	}
 	data := t.TempDir()
 	server, err := New(Options{
 		DataDir:        data,
@@ -649,6 +655,10 @@ func TestDiscoveryLiveFailureKeepsCacheAndReportsSanitizedStage(t *testing.T) {
 		!strings.Contains(retained.Body.String(), "Fictional Cached Movies") ||
 		!strings.Contains(retained.Body.String(), cached.CompletedAtUTC) {
 		t.Fatalf("failed live refresh changed or hid the retained cache: %d %s", retained.Code, retained.Body.String())
+	}
+	mapping := editorField(t, ReadConfigEditor(root), "UserEmailOverrides").Value.(map[string]any)
+	if mapping["7"] != "retained-managed@example.org" {
+		t.Fatalf("failed live refresh changed the private managed-user mapping: %#v", mapping)
 	}
 	status := server.configuration.Load(revision)
 	choiceStep := status.Steps["choices"]

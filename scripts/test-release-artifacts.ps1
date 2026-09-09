@@ -113,6 +113,11 @@ function Assert-RendererContract([string]$PackageName, [string]$Renderer) {
     Assert-True (-not $Renderer.Contains('[string]$meta.title')) "$PackageName retains strict direct access to optional hero title metadata."
     Assert-True ($Renderer.Contains('Smtp-Transport.ps1')) "$PackageName does not load the explicit SMTP authentication transport."
     Assert-True ($Renderer.Contains('Send-TautWeeklySmtpMessage')) "$PackageName does not route mail through the explicit SMTP transport."
+    Assert-True ($Renderer.Contains('function Assert-TautWeeklyUserEmailOverrides')) "$PackageName does not validate managed-user fallback addresses."
+    Assert-True ($Renderer.Contains('UserEmailOverrides supports at most 2000 assignments.')) "$PackageName lacks the bounded managed-user fallback map."
+    Assert-True ($Renderer.Contains('DeliveryEmail = $deliveryEmail')) "$PackageName does not resolve an effective recipient address."
+    Assert-True ($Renderer.Contains('if ([string]::IsNullOrWhiteSpace([string]$User.DeliveryEmail)) { return "missingEmail" }')) "$PackageName does not apply missing-email policy to the effective address."
+    Assert-True ($Renderer.Contains('-To $result.User.DeliveryEmail')) "$PackageName SendAll does not use the effective recipient address."
     Assert-True ($Renderer.Contains('function Get-StatsTvShowRowsHtml')) "$PackageName lacks grouped TV-show personal statistics."
     Assert-True ($Renderer.Contains('$tvShows = @($Stats.TvShowItems)')) "$PackageName does not enrich every watched TV show for IMDb ratings."
     Assert-True ($Renderer.Contains('$movies = @($Stats.MovieItems)')) "$PackageName does not enrich every watched movie for ratings."
@@ -661,6 +666,13 @@ foreach ($archiveName in $expected.Keys) {
         try { $renderer = $reader.ReadToEnd() }
         finally { $reader.Dispose() }
         Assert-RendererContract -PackageName $archiveName -Renderer $renderer
+
+        $configExampleEntry = @($archive.Entries | Where-Object { $_.FullName -match '/(?:app/)?config[.]example[.]json$' })
+        Assert-True ($configExampleEntry.Count -eq 1) "$archiveName does not contain one config.example.json."
+        $configExampleReader = New-Object IO.StreamReader($configExampleEntry[0].Open())
+        try { $configExample = $configExampleReader.ReadToEnd() }
+        finally { $configExampleReader.Dispose() }
+        Assert-True ($configExample.Contains('"UserEmailOverrides": {}')) "$archiveName config example omits the managed-user fallback map."
 
         $cacheEntry = @($archive.Entries | Where-Object { $_.FullName -match '/(?:app/)?DeletedItemCache\.ps1$' } | Select-Object -First 1)
         Assert-True ($cacheEntry.Count -eq 1) "$archiveName has no persistent cache module."

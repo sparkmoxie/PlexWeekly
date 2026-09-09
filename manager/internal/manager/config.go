@@ -19,6 +19,10 @@ var secretConfigKeys = map[string]struct{}{
 	"smtpapppassword": {},
 }
 
+var privateConfigKeys = map[string]struct{}{
+	"useremailoverrides": {},
+}
+
 type SecretStatus struct {
 	Configured           bool `json:"configured"`
 	AvailableFromRuntime bool `json:"availableFromRuntime,omitempty"`
@@ -75,6 +79,14 @@ func ReadRedactedConfig(root string) ConfigView {
 			})
 			continue
 		}
+		if _, private := privateConfigKeys[strings.ToLower(name)]; private {
+			fields = append(fields, ConfigField{
+				Name:   name,
+				Type:   "secret",
+				Secret: &SecretStatus{Configured: privateConfigValueConfigured(value)},
+			})
+			continue
+		}
 		fields = append(fields, ConfigField{
 			Name:  name,
 			Type:  jsonType(value),
@@ -87,6 +99,17 @@ func ReadRedactedConfig(root string) ConfigView {
 		Valid:  true,
 		State:  "ready",
 		Fields: fields,
+	}
+}
+
+func privateConfigValueConfigured(value any) bool {
+	switch typed := value.(type) {
+	case map[string]any:
+		return len(typed) > 0
+	case map[string]string:
+		return len(typed) > 0
+	default:
+		return false
 	}
 }
 

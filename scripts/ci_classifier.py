@@ -35,6 +35,7 @@ FAST_ONLY_SCRIPTS = {
     "scripts/test-manager-header-refresh.mjs",
     "scripts/test-manager-preview-refresh.mjs",
     "scripts/test-manager-update-indicator.mjs",
+    "scripts/test-manager-user-email-overrides.mjs",
     "scripts/validate-branding.ps1",
     "scripts/validate-docs.ps1",
     "scripts/validate-release-history.ps1",
