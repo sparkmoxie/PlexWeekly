@@ -154,14 +154,15 @@ func sanitizeCachedDiscovery(stored TautulliDiscoveryResult) (TautulliDiscoveryR
 			name = "User " + id
 		}
 		eligibility := user.Eligibility
-		if eligibility != "eligible" && eligibility != "skipped" && eligibility != "unknown" {
+		if eligibility != "eligible" && eligibility != "address-needed" && eligibility != "skipped" && eligibility != "unknown" {
 			eligibility = "unknown"
 		}
+		needsDeliveryAddress := eligibility == "address-needed" && user.NeedsDeliveryAddress
 		role := user.Role
 		if role != "owner" && role != "administrator" {
 			role = ""
 		}
-		clean.Users = append(clean.Users, DiscoveredUser{ID: id, Name: name, Eligibility: eligibility, Role: role, LegacyRuleExcluded: user.LegacyRuleExcluded})
+		clean.Users = append(clean.Users, DiscoveredUser{ID: id, Name: name, Eligibility: eligibility, NeedsDeliveryAddress: needsDeliveryAddress, Role: role, LegacyRuleExcluded: user.LegacyRuleExcluded})
 		if len(clean.Users) == maximumDiscoveryChoices {
 			break
 		}

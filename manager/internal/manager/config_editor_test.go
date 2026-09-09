@@ -29,6 +29,10 @@ func TestReadConfigEditorUsesSafeDefaultsWithoutSecrets(t *testing.T) {
 	if value := editorField(t, view, "SmtpPort").Value; value != int64(587) {
 		t.Fatalf("SMTP port default: got %#v", value)
 	}
+	overrides, ok := editorField(t, view, "UserEmailOverrides").Value.(map[string]string)
+	if !ok || len(overrides) != 0 {
+		t.Fatalf("unexpected managed-user delivery default: %#v", editorField(t, view, "UserEmailOverrides").Value)
+	}
 	plexURL := editorField(t, view, "PlexWebUrl")
 	if plexURL.Label != "Open Plex button URL or custom link" || plexURL.Value != "https://app.plex.tv/desktop/" {
 		t.Fatalf("unexpected custom-link field: %+v", plexURL)
@@ -196,6 +200,91 @@ func TestEditorHidesLegacyEmailExclusionsAndPreservesThemOnSave(t *testing.T) {
 	raw, _ = os.ReadFile(path)
 	if !strings.Contains(string(raw), "legacy@example.org") {
 		t.Fatal("hidden legacy email exclusion was not preserved")
+	}
+}
+
+func TestSaveConfigValidatesAndNormalizesUserEmailOverrides(t *testing.T) {
+	root := integrationConfigRoot(t, "http://127.0.0.1:8181", "fictional-api-key", "", "")
+	tests := []struct {
+		name string
+		raw  json.RawMessage
+	}{
+		{name: "array", raw: json.RawMessage(`[]`)},
+		{name: "non numeric id", raw: json.RawMessage(`{"viewer":"viewer@example.org"}`)},
+		{name: "oversized id", raw: json.RawMessage(`{"123456789012345678901":"viewer@example.org"}`)},
+		{name: "overflowing id", raw: json.RawMessage(`{"18446744073709551616":"viewer@example.org"}`)},
+		{name: "non string address", raw: json.RawMessage(`{"42":42}`)},
+		{name: "invalid address", raw: json.RawMessage(`{"42":"not-an-address"}`)},
+		{name: "duplicate id", raw: json.RawMessage(`{"42":"one@example.org","42":"two@example.org"}`)},
+		{name: "duplicate normalized id", raw: json.RawMessage(`{"42":"one@example.org"," 42 ":"two@example.org"}`)},
+	}
+	longAddress, _ := json.Marshal(map[string]string{"42": strings.Repeat("a", 245) + "@example.org"})
+	tests = append(tests, struct {
+		name string
+		raw  json.RawMessage
+	}{name: "oversized address", raw: longAddress})
+	tooMany := make(map[string]string, maximumUserEmailOverrides+1)
+	for index := 0; index <= maximumUserEmailOverrides; index++ {
+		tooMany[fmt.Sprint(index)] = "shared@example.org"
+	}
+	tooManyRaw, _ := json.Marshal(tooMany)
+	tests = append(tests, struct {
+		name string
+		raw  json.RawMessage
+	}{name: "too many assignments", raw: tooManyRaw})
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request := validConfigSaveRequest(t, ReadConfigEditor(root))
+			request.Values["UserEmailOverrides"] = test.raw
+			result, fields, err := SaveConfig(root, request, time.Now)
+			if err != nil || result.Saved || fields["UserEmailOverrides"] == "" {
+				t.Fatalf("invalid mapping result=%+v fields=%v err=%v", result, fields, err)
+			}
+		})
+	}
+
+	request := validConfigSaveRequest(t, ReadConfigEditor(root))
+	request.Values["UserEmailOverrides"] = json.RawMessage(`{"42":" shared@example.org ","43":"shared@example.org","44":""}`)
+	result, fields, err := SaveConfig(root, request, time.Now)
+	if err != nil || len(fields) != 0 || !result.Saved || !result.PostSave.WarmCache || result.PostSave.ChangedCategories[0] != "recipients" {
+		t.Fatalf("valid mapping result=%+v fields=%v err=%v", result, fields, err)
+	}
+	stored := editorField(t, result.Editor, "UserEmailOverrides").Value.(map[string]any)
+	if len(stored) != 2 || stored["42"] != "shared@example.org" || stored["43"] != "shared@example.org" {
+		t.Fatalf("mapping normalization or duplicate-address support failed: %#v", stored)
+	}
+}
+
+func TestUserEmailOverridesSaveEditClearPreservesOrphansAndRecipientState(t *testing.T) {
+	root := integrationConfigRoot(t, "http://127.0.0.1:8181", "fictional-api-key", "", "")
+	accessState := []byte(`{"Users":{"42":{"WelcomeSentUtc":"2031-04-18T16:30:00Z"}}}`)
+	accessPath := filepath.Join(root, "access-state.json")
+	if err := os.WriteFile(accessPath, accessState, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	request := validConfigSaveRequest(t, ReadConfigEditor(root))
+	request.Values["UserEmailOverrides"] = json.RawMessage(`{"42":"assigned@example.org","999":"orphan@example.org"}`)
+	created, fields, err := SaveConfig(root, request, time.Now)
+	if err != nil || len(fields) != 0 || !created.Saved {
+		t.Fatalf("create mapping: result=%+v fields=%v err=%v", created, fields, err)
+	}
+	request = validConfigSaveRequest(t, created.Editor)
+	request.Values["UserEmailOverrides"] = json.RawMessage(`{"999":"orphan@example.org"}`)
+	cleared, fields, err := SaveConfig(root, request, time.Now)
+	if err != nil || len(fields) != 0 || !cleared.Saved {
+		t.Fatalf("clear mapping: result=%+v fields=%v err=%v", cleared, fields, err)
+	}
+	stored := editorField(t, cleared.Editor, "UserEmailOverrides").Value.(map[string]any)
+	if len(stored) != 1 || stored["999"] != "orphan@example.org" {
+		t.Fatalf("orphan mapping was not preserved while active mapping cleared: %#v", stored)
+	}
+	if current, err := os.ReadFile(accessPath); err != nil || string(current) != string(accessState) {
+		t.Fatalf("assignment changes altered welcome/access history: %q err=%v", current, err)
+	}
+	backup, err := os.ReadFile(filepath.Join(root, cleared.Backup))
+	if err != nil || !strings.Contains(string(backup), "assigned@example.org") {
+		t.Fatalf("private config backup did not retain the previous assignment: err=%v", err)
 	}
 }
 

@@ -41,6 +41,7 @@
   "CustomTextCardBody": "",
   "IncludedLibraryIds": [],
   "ExcludedUserIds": [],
+  "UserEmailOverrides": {},
   "ExcludedEmails": [],
   "RecentAccessDays": 7,
   "SendDelaySeconds": 30

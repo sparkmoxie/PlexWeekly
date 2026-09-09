@@ -1,5 +1,10 @@
 TautWeekly for Plex FreeBSD Podman platform changelog
 
+v1.4.0
+- adds private fallback delivery addresses for active Tautulli users without native email
+- keeps native email authoritative, applies existing exclusions to the effective address, and preserves TestEmail isolation
+- omits fallback addresses from sanitized discovery, operation results, diagnostics, and shareable cache reports
+
 v1.3.0
 - adds password-gated public Tailscale Funnel through the isolated official Linux userspace runtime inside Podman
 - replaces dependency on a community-maintained host Serve route with exact fixed-target lifecycle ownership

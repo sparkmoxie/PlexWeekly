@@ -348,6 +348,7 @@ authorization.
 | `IncludedLibraryIds` | `[]` | Stable Tautulli section IDs defining the global newsletter scope; empty means all active movie/TV libraries for backward compatibility |
 | `ExcludedUserIds` | `[]` | Users omitted by stable Tautulli ID |
 | `ExcludedEmails` | `[]` | Email addresses omitted from delivery |
+| `UserEmailOverrides` | `{}` | Private map from numeric Tautulli user ID to a fallback address, used only for an active user with no native email |
 | `RecentAccessDays` | 7 | New/recent access classification |
 | `SendDelaySeconds` | 30 | Pause between real production recipient attempts |
 | `TestSendDelaySeconds` | 10 | Pause between controlled Test All messages |
@@ -535,15 +536,35 @@ merged by ID. TautWeekly for Plex does not call `get_user` once per roster row;
 if the detailed bulk request fails, name-only rows remain selectable but are
 not marked delivery-eligible in the selector.
 
-The Config checkboxes are exclusions: checked means excluded. An unchecked
-user is production-eligible only when the Tautulli record is active and has an
-email address. Tautulli's legacy `do_notify` notification-agent value does not
+The Config checkboxes are exclusions: checked means excluded. A separate
+**Managed-user delivery addresses** card appears only for active users whose
+Tautulli record has no native email. Its validated email controls update the
+private `UserEmailOverrides` object by stable numeric user ID; multiple users
+may intentionally share one inbox. Clearing a value removes that assignment,
+while assignments for IDs absent from the current discovery remain preserved.
+Tautulli's legacy `do_notify` notification-agent value does not
 grant or revoke TautWeekly delivery; explicit `ExcludedUserIds` and
 `ExcludedEmails` remain the administrator-controlled opt-out policy. SendAll
 records only fixed aggregate skip counts for inactive/deleted users, missing
 email, stable-ID exclusions, and legacy email exclusions. It never stores a
 recipient identity in Manager history or reports a zero-recipient run as SMTP
 success.
+
+Production eligibility uses one fixed precedence: inactive or deleted account,
+`ExcludedUserIds`, native Tautulli email when present (otherwise the mapped
+fallback), missing effective address, then `ExcludedEmails` against that
+effective address. An override never replaces or reroutes a native email.
+`SendAll`, the separately confirmed one-off welcome, and cache coverage use the
+same effective recipient; Preview and every TestEmail mode remain isolated to
+the selected sample user and configured `TestEmail`. Removing a mapping does
+not alter welcome/history state and returns an otherwise eligible native-blank
+user to `missingEmail` until another address is assigned.
+
+Saving an assignment change regenerates previews and, when the deleted-item
+cache is enabled, refreshes recipient coverage. Discovery retains only the
+numeric ID, display name, role, eligibility, and an address-needed Boolean.
+The address map is absent from the sanitized choice cache and all shareable
+diagnostics. It remains private data in `config.json` and configuration backups.
 
 **Repeat this Tautulli lookup** and the main header **Refresh** repeat the same
 saved-revision, LAN-only lookup and refresh only the Manager's library and user
@@ -560,10 +581,10 @@ Normally revise exclusions in Manager Config. Recovery/expert fallbacks are
 `14-MANAGE-USER-EXCLUSIONS.bat` on Windows,
 `./tautweekly.sh exclude-users` on either Docker edition, and
 `sudo tautweekly exclude-users` on Linux or FreeBSD. The standalone command
-does not change `ExcludedEmails`, SMTP values, or scheduling. Both lists affect
-scheduled and confirmed SendAll delivery. Preview and TestEmail modes remain
-available for rendering checks, while a one-off welcome is a separate,
-explicitly confirmed administrator action.
+does not change `ExcludedEmails`, `UserEmailOverrides`, SMTP values, or
+scheduling. Both exclusion lists affect scheduled and confirmed SendAll plus
+the separately confirmed one-off welcome. Preview and TestEmail modes remain
+available for rendering checks.
 
 ## Scheduling
 

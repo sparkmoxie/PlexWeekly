@@ -103,6 +103,28 @@ foreach ($emailProp in @("FromEmail","TestEmail","ReplyToEmail")) {
 }
 OK "Configured email addresses are syntactically valid"
 
+$userEmailOverrides = Get-Prop "UserEmailOverrides"
+if ($null -ne $userEmailOverrides) {
+    $overrideEntries = @($userEmailOverrides.PSObject.Properties)
+    if ($overrideEntries.Count -gt 2000) { FAIL "UserEmailOverrides contains more than 2000 assignments."; exit 1 }
+    foreach ($entry in $overrideEntries) {
+        $id = ([string]$entry.Name).Trim()
+        $address = if ($entry.Value -is [string]) { ([string]$entry.Value).Trim() } else { "" }
+        [UInt64]$parsedUserId = 0
+        if ($id -notmatch '^\d{1,20}$' -or -not [UInt64]::TryParse($id, [ref]$parsedUserId) -or $entry.Value -isnot [string] -or $address.Length -gt 254) {
+            FAIL "UserEmailOverrides contains an invalid user ID or address value."
+            exit 1
+        }
+        if ([string]::IsNullOrWhiteSpace($address)) { continue }
+        try {
+            $parsed = New-Object System.Net.Mail.MailAddress($address)
+            if ([string]$parsed.Address -cne $address) { throw "address normalization mismatch" }
+        }
+        catch { FAIL "UserEmailOverrides contains an invalid delivery address."; exit 1 }
+    }
+}
+OK "Managed-user delivery addresses are valid"
+
 $smtpAuth = $true
 if ($null -ne $config.PSObject.Properties["SmtpUseAuthentication"]) {
     $smtpAuth = [bool]$config.SmtpUseAuthentication

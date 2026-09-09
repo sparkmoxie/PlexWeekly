@@ -113,6 +113,7 @@ $required = @(
     'scripts/test-scheduler-timezone.ps1',
     'scripts/test-manager-accessibility.py',
     'scripts/test-manager-header-refresh.mjs',
+    'scripts/test-manager-user-email-overrides.mjs',
     'scripts/test-smtp-transport.py',
     'scripts/optimize-email-gifs.py',
     'scripts/test-asset-refresh.py',

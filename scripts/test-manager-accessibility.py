@@ -661,6 +661,25 @@ def main() -> int:
         failures.append("configured delivery exclusions are not grouped visibly at the top of discovered users")
     if ".user-combobox>input" not in css or ".manual-send-mode-field select{border-color:var(--line-strong)" not in css:
         failures.append("guided user and delivery-mode selectors do not share consistent control styling")
+    for marker in (
+        'id="managed-user-delivery-addresses"',
+        'aria-labelledby="managed-user-delivery-heading"',
+        'id="managed-user-delivery-list" role="list"',
+        'Native Tautulli email always wins, exclusions still apply, and multiple profiles may use the same inbox.',
+    ):
+        if marker not in html:
+            failures.append(f"managed-user delivery-address card is missing: {marker}")
+    for marker in (
+        'user.needsDeliveryAddress === true',
+        'input.type = "email";',
+        'input.maxLength = 254;',
+        'input.setAttribute("aria-describedby", status.id);',
+        'input.setAttribute("aria-invalid", String(!valid));',
+    ):
+        if marker not in javascript:
+            failures.append(f"managed-user delivery-address control is missing: {marker}")
+    if ".managed-user-delivery-row" not in css or "@media(max-width:800px){.managed-user-delivery-row{grid-template-columns:1fr}" not in css:
+        failures.append("managed-user delivery-address card lacks responsive styling")
     if 'input.addEventListener("click"' not in javascript or 'if (open) input.focus();' not in javascript:
         failures.append("guided user selectors do not open from the full input field for typing or mouse selection")
     if 'card.hidden = !manualSend;' not in javascript:

@@ -8,7 +8,13 @@ configuration, verification, preview, update, and scheduling experience. The
 numbered BAT files are retained for portable recovery and advanced diagnostics;
 they are not the normal setup flow.
 
-Current Windows package baseline: **1.10.0**.
+Current Windows package baseline: **1.12.0**.
+
+Manager Config shows a separate **Managed-user delivery addresses** card when
+Tautulli reports an active user without native email. Assignments are private,
+may share an inbox, and never override a native address. The existing exclusion
+card still applies by user ID and by the effective delivery address; TestEmail
+remains isolated. See the [configuration reference](../CONFIGURATION.md#interactive-user-exclusions).
 
 ## Requirements
 

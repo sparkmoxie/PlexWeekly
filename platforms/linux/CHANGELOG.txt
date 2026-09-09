@@ -1,5 +1,10 @@
 TautWeekly for Plex native Linux platform changelog
 
+v1.5.0
+- adds private fallback delivery addresses for active Tautulli users without native email
+- keeps native email authoritative, applies existing exclusions to the effective address, and preserves TestEmail isolation
+- omits fallback addresses from sanitized discovery, operation results, diagnostics, and shareable cache reports
+
 v1.4.0
 - replaces native private Serve with password-gated public HTTPS Funnel while Manager remains on loopback
 - uses the root-owned socket service only for fixed inspect, enable, disable, public DNS, and trusted-TLS verification operations

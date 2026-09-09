@@ -14,7 +14,14 @@ controlled TestEmail delivery, scheduling, profile/image status, and recovery.
 The verified Mac archive and local image build remain a supported break-fix
 fallback. The unified registry deployment is the preferred installation.
 
-Current source baseline: **1.7.0**.
+Current source baseline: **1.8.0**.
+
+Manager Config shows a separate **Managed-user delivery addresses** card when
+Tautulli reports an active user without native email. Assignments stay in the
+private data volume and its backups, may share an inbox, and never override a
+native address. Existing user-ID and effective-address exclusions still apply;
+TestEmail remains isolated. See the
+[configuration reference](../CONFIGURATION.md#interactive-user-exclusions).
 
 ## Requirements
 

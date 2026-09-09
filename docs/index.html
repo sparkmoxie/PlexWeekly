@@ -69,17 +69,17 @@
       </div>
     </section>
 
-    <section class="section searchable" id="feature-spotlight" data-feature-release="v0.25.0" data-search="feature release remote access tailscale funnel public https windows native linux loopback password dns tls lifecycle container refusal">
+    <section class="section searchable" id="feature-spotlight" data-feature-release="v0.26.0" data-search="feature release managed plex users delivery address fallback email personalized newsletter exclusions privacy">
       <div class="section-heading">
-        <div><div class="eyebrow">v0.25.0 secure native remote access</div><h2>Public when enabled. Loopback where it belongs.</h2></div>
-        <p>The newest feature release adds password-gated public HTTPS Funnel to the native Windows and Linux Managers without broadening their local bind.</p>
+        <div><div class="eyebrow">v0.26.0 managed-user delivery</div><h2>Every managed profile can get its own recap.</h2></div>
+        <p>The newest feature release adds private fallback delivery addresses for active Tautulli users who do not have native email.</p>
       </div>
       <article class="card featured">
-        <span class="tag">Windows · Native Linux · Tailscale Funnel</span>
-        <h3>One shared controller, narrow host adapters</h3>
-        <p>v0.25.0 keeps Manager on its fixed loopback target while a typed, provider-neutral controller allows only exact enable, disable, and verify operations. Green Active requires the owned route, public DNS, trusted TLS, and the Manager password lock.</p>
-        <ul><li>Ordinary remote browsers use the generated public HTTPS address without joining the tailnet</li><li>Password disable, reset, explicit stop, recovery, adapter revocation, and uninstall clean up the exact owned route or fail closed</li><li>Ordinary update and rollback preserve the retained preference and fixed route</li><li>Windows uses a fixed UAC helper; native Linux uses a root-owned one-shot socket adapter</li><li>Docker/NAS, macOS Docker, Unraid, QNAP/Synology, and FreeBSD use an isolated official userspace Funnel runtime</li><li>Diagnostics omit raw CLI output, tailnet identity, addresses, credentials, and sensitive paths</li></ul>
-        <div class="card-actions"><a href="REMOTE-ACCESS.md">Architecture and support</a><a href="windows/#remote-access">Windows setup</a><a href="linux/#remote-access">Native Linux setup</a><a href="releases/v0.25.0.md">v0.25.0 release notes</a></div>
+        <span class="tag">All packages · Private configuration · Native-email safe</span>
+        <h3>A deliberate fallback, never a redirect</h3>
+        <p>Manager shows an accessible assignment card only for active native-email-blank users. TautWeekly keeps native email authoritative, applies the existing ID and effective-address exclusions, and uses the fallback only for production paths that already target the selected user.</p>
+        <ul><li>Assignments are keyed by stable numeric Tautulli user ID and may share one inbox</li><li>Clearing an assignment returns that profile to missing-email status without changing history</li><li>Failed discovery retains the last sanitized choices and private assignments</li><li>TestEmail remains isolated from production addresses</li><li>Recipient coverage changes regenerate previews and refresh enabled cache coverage</li><li>Sanitized caches, results, and diagnostics never contain the map or fallback addresses</li></ul>
+        <div class="card-actions"><a href="CONFIGURATION.md#interactive-user-exclusions">Configure managed users</a><a href="SECURITY.md#recipient-privacy">Privacy boundary</a><a href="releases/v0.26.0.md">v0.26.0 release notes</a></div>
       </article>
     </section>
 

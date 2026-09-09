@@ -50,7 +50,10 @@ produce the same newsletter behavior.
 Every Quickstart follows the same GUI-first path: install the package, open and
 pair the Manager where required, complete **Config**, run the non-sending
 verification, review all six **Previews**, send only to **TestEmail**, and then
-opt into **Schedule**. Config can add an optional custom text card before the
+opt into **Schedule**. When discovery finds an active managed Tautulli user
+without native email, Config shows a separate private delivery-address card;
+native email takes precedence and the existing exclusion card is unchanged.
+Config can also add an optional custom text card before the
 release-count/date block; its body is required whenever the card is enabled,
 and its uppercase title can append one of six packaged local GIFs.
 The [configuration reference](CONFIGURATION.md#optional-custom-text-card) and

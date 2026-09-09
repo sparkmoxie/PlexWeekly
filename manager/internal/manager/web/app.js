@@ -50,7 +50,7 @@ const state = {
 };
 const byId = (id) => document.getElementById(id);
 const titleCase = (value) => String(value || "unknown").replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-const guidedConfigFields = new Set(["IncludedLibraryIds", "ExcludedUserIds"]);
+const guidedConfigFields = new Set(["IncludedLibraryIds", "ExcludedUserIds", "UserEmailOverrides"]);
 const noTitleGifChoice = Object.freeze({ id: "none", label: "None", file: "" });
 const titleGifChoices = Object.freeze([
   { id: "celebrate", label: "Celebrate", file: "celebrate.gif" },
@@ -1109,7 +1109,9 @@ function renderConfigEditor() {
     input.type = "hidden";
     input.id = `config-${field.name}`;
     input.name = field.name;
-    input.value = Array.isArray(field.value) ? field.value.join(", ") : field.value ?? "";
+    input.value = field.type === "user-email-map"
+      ? JSON.stringify(field.value && typeof field.value === "object" && !Array.isArray(field.value) ? field.value : {})
+      : Array.isArray(field.value) ? field.value.join(", ") : field.value ?? "";
     sections.append(input);
   }
   byId("config-save-copy").textContent = editor.exists
@@ -1162,6 +1164,7 @@ function renderDiscovery() {
     byId("discovery-message").textContent = state.discoveryError || (ready
       ? "The first valid save or a saved Tautulli connection change loads these choices automatically. Confirm above to repeat the saved service lookup now."
       : "Save a complete configuration before loading choices.");
+    renderManagedUserDeliveryAddresses();
     renderUserComboboxes();
     return;
   }
@@ -1171,6 +1174,7 @@ function renderDiscovery() {
     : `Fresh choices loaded ${formatDate(state.discovery.completedAtUtc)} and retained locally for this saved configuration.`);
   renderDiscoveredLibraries();
   renderDiscoveredUsers();
+  renderManagedUserDeliveryAddresses();
   renderUserComboboxes();
 }
 
@@ -1194,6 +1198,87 @@ function setListField(name, values) {
 function savedListField(name) {
   const field = (state.editor?.fields || []).find((candidate) => candidate.name === name);
   return Array.isArray(field?.value) ? field.value.map((value) => String(value).trim()).filter(Boolean) : [];
+}
+
+function currentUserEmailOverrides() {
+  const input = byId("config-UserEmailOverrides");
+  if (!input || !input.value) return {};
+  try {
+    const parsed = JSON.parse(input.value);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(Object.entries(parsed).map(([id, address]) => [String(id), String(address ?? "")]));
+  } catch (_) {
+    return {};
+  }
+}
+
+function setUserEmailOverride(userID, address) {
+  const input = byId("config-UserEmailOverrides");
+  if (!input) return;
+  const assignments = currentUserEmailOverrides();
+  if (address === "") delete assignments[userID];
+  else assignments[userID] = address;
+  input.value = JSON.stringify(assignments);
+}
+
+function managedUserAddressState(input, status) {
+  const assigned = input.value.trim() !== "";
+  const valid = !assigned || input.validity.valid;
+  status.textContent = assigned && valid ? "Assigned" : assigned ? "Check address" : "Address needed";
+  status.className = `state-chip ${assigned && valid ? "good" : assigned ? "bad" : "warning"}`;
+  input.setAttribute("aria-invalid", String(!valid));
+}
+
+function renderManagedUserDeliveryAddresses() {
+  const card = byId("managed-user-delivery-addresses");
+  const container = byId("managed-user-delivery-list");
+  const users = (state.discovery?.users || [])
+    .filter((user) => user.needsDeliveryAddress === true)
+    .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: "base" }));
+  card.hidden = !state.discovery || users.length === 0;
+  container.replaceChildren();
+  if (card.hidden) {
+    setText("managed-user-delivery-count", "");
+    return;
+  }
+  const assignments = currentUserEmailOverrides();
+  const assignedCount = users.filter((user) => String(assignments[user.id] || "").trim() !== "").length;
+  setText("managed-user-delivery-count", `${assignedCount} assigned · ${users.length - assignedCount} needed`);
+  for (const user of users) {
+    const row = document.createElement("div");
+    row.className = "managed-user-delivery-row";
+    row.setAttribute("role", "listitem");
+    const identity = document.createElement("div");
+    const label = document.createElement("label");
+    const inputID = `managed-user-address-${user.id}`;
+    label.htmlFor = inputID;
+    label.textContent = user.name;
+    const detail = document.createElement("small");
+    detail.textContent = `Tautulli user ${user.id}`;
+    identity.append(label, detail);
+    const input = document.createElement("input");
+    input.id = inputID;
+    input.type = "email";
+    input.maxLength = 254;
+    input.autocomplete = "off";
+    input.spellcheck = false;
+    input.placeholder = "name@example.com";
+    input.value = String(assignments[user.id] || "");
+    const status = document.createElement("span");
+    status.id = `${inputID}-status`;
+    input.setAttribute("aria-describedby", status.id);
+    managedUserAddressState(input, status);
+    input.addEventListener("input", () => {
+      setUserEmailOverride(user.id, input.value);
+      managedUserAddressState(input, status);
+      const current = currentUserEmailOverrides();
+      const count = users.filter((candidate) => String(current[candidate.id] || "").trim() !== "").length;
+      setText("managed-user-delivery-count", `${count} assigned · ${users.length - count} needed`);
+      updateConfigSaveAvailability();
+    });
+    row.append(identity, input, status);
+    container.append(row);
+  }
 }
 
 function renderDiscoveredLibraries() {
@@ -1902,6 +1987,8 @@ function collectConfigSaveRequest() {
       values[field.name] = input.value === "" ? null : Number(input.value);
     } else if (field.type === "string-list" || field.type === "email-list") {
       values[field.name] = input.value.split(/[\n,]/).map((value) => value.trim()).filter(Boolean);
+    } else if (field.type === "user-email-map") {
+      values[field.name] = currentUserEmailOverrides();
     } else {
       values[field.name] = input.value;
     }
@@ -4285,6 +4372,8 @@ function showAuthentication() {
   state.operationStartingType = "";
   byId("discovery-libraries").replaceChildren();
   byId("discovery-users").replaceChildren();
+  byId("managed-user-delivery-list").replaceChildren();
+  byId("managed-user-delivery-addresses").hidden = true;
   renderUserComboboxes();
   clearTimeout(operationPollTimer);
   clearTimeout(schedulePollTimer);

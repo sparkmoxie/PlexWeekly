@@ -12,6 +12,7 @@
   "SmtpUsername": "newsletter@example.org",
   "SmtpPassword": "fictional-browser-qa-smtp-password",
   "ExcludedUserIds": [],
+  "UserEmailOverrides": {},
   "ExcludedEmails": [
     "VIEWER@example.com",
     "unmatched-legacy@example.org"

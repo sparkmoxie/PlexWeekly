@@ -117,6 +117,8 @@ function createHarness({
   const loginPassword = { focus() { events.push("auth:focus"); } };
   const discoveryLibraries = { replaceChildren() { events.push("auth:libraries-clear"); } };
   const discoveryUsers = { replaceChildren() { events.push("auth:users-clear"); } };
+  const managedUserDeliveryList = { replaceChildren() { events.push("auth:managed-users-clear"); } };
+  const managedUserDeliveryCard = { hidden: true };
   let localIndex = 0;
   let checkIndex = 0;
   let discoveryIndex = 0;
@@ -182,6 +184,7 @@ function createHarness({
     renderUserComboboxes() { events.push("users:render"); },
     renderDiscoveredLibraries() { events.push("libraries:render"); },
     renderDiscoveredUsers() { events.push("discovered-users:render"); },
+    renderManagedUserDeliveryAddresses() { events.push("managed-users:render"); },
     setGlobalStatus(message, persistent) { globalStatuses.push({ message, persistent }); },
     byId(id) {
       if (id === "update-settings-message") return updateMessage;
@@ -196,6 +199,8 @@ function createHarness({
       if (id === "login-password") return loginPassword;
       if (id === "discovery-libraries") return discoveryLibraries;
       if (id === "discovery-users") return discoveryUsers;
+      if (id === "managed-user-delivery-list") return managedUserDeliveryList;
+      if (id === "managed-user-delivery-addresses") return managedUserDeliveryCard;
       if (id === "app-shell") return appShell;
       throw new Error(`unexpected element ${id}`);
     },

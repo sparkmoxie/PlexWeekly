@@ -1,2 +1,2 @@
-TautWeekly for Plex FreeBSD Podman platform source v1.3.0
+TautWeekly for Plex FreeBSD Podman platform source v1.4.0
 Repository releases use the repository-level semantic version and preserve this platform baseline in release metadata.

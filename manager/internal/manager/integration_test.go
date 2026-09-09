@@ -463,12 +463,14 @@ func TestTautulliDiscoveryReturnsSanitizedChoicesWithoutEmailOrSecrets(t *testin
 		case "get_user_names":
 			data = []any{
 				map[string]any{"user_id": "2", "friendly_name": "Fictional Viewer"},
+				map[string]any{"user_id": "3", "friendly_name": "Fictional Managed Viewer"},
 				map[string]any{"user_id": int64(1234567890123456789), "friendly_name": "Fictional Archived Viewer"},
 			}
 		case "get_users":
 			data = []any{
 				map[string]any{"user_id": "1", "friendly_name": "Fictional Admin", "is_active": 1, "do_notify": 0, "is_admin": 1},
 				map[string]any{"user_id": "2", "username": "viewer", "email": "private-viewer@example.org", "is_active": 0, "do_notify": 1},
+				map[string]any{"user_id": "3", "username": "managed", "email": "", "is_active": 1, "do_notify": 1},
 			}
 		case "get_users_table":
 			if r.URL.Query().Get("start") != "0" || r.URL.Query().Get("length") != strconv.Itoa(maximumDiscoveryChoices) {
@@ -498,16 +500,16 @@ func TestTautulliDiscoveryReturnsSanitizedChoicesWithoutEmailOrSecrets(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Libraries) != 2 || result.Libraries[0].ID != "10" || len(result.Users) != 3 {
+	if len(result.Libraries) != 2 || result.Libraries[0].ID != "10" || len(result.Users) != 4 {
 		t.Fatalf("unexpected discovery result: %+v", result)
 	}
 	if result.SuggestedPreviewUserID != "1" || result.Users[0].Role != "administrator" {
 		t.Fatalf("explicit administrator was not selected safely: %+v", result)
 	}
-	if result.Users[0].Eligibility != "eligible" || result.Users[1].Eligibility != "unknown" || result.Users[1].ID != "1234567890123456789" || result.Users[2].Eligibility != "skipped" {
+	if result.Users[0].Eligibility != "eligible" || result.Users[1].Eligibility != "unknown" || result.Users[1].ID != "1234567890123456789" || result.Users[2].Eligibility != "address-needed" || !result.Users[2].NeedsDeliveryAddress || result.Users[3].Eligibility != "skipped" || result.Users[3].NeedsDeliveryAddress {
 		t.Fatalf("unexpected eligibility normalization: %+v", result.Users)
 	}
-	if result.LegacyRuleCount != 2 || result.MatchedLegacyRuleCount != 1 || !result.Users[0].LegacyRuleExcluded || result.Users[1].LegacyRuleExcluded || result.Users[2].LegacyRuleExcluded {
+	if result.LegacyRuleCount != 2 || result.MatchedLegacyRuleCount != 1 || !result.Users[0].LegacyRuleExcluded || result.Users[1].LegacyRuleExcluded || result.Users[2].LegacyRuleExcluded || result.Users[3].LegacyRuleExcluded {
 		t.Fatalf("legacy rules were not matched without disclosure: %+v", result)
 	}
 	encoded, err := json.Marshal(result)

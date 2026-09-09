@@ -438,6 +438,9 @@ foreach ($relative in @(
     'platforms/windows/VERIFY-SETUP.ps1'
 )) {
     Require-Text $relative @(
+        'UserEmailOverrides',
+        'more than 2000 assignments',
+        'invalid delivery address',
         'SMTP authentication and sender authorization are not tested by verify',
         '-Mode VerifyPlex',
         'Direct Plex identity and authenticated library requests succeeded',
@@ -452,6 +455,10 @@ foreach ($relative in @(
     'platforms/windows/TautWeekly.ps1'
 )) {
     Require-Text $relative @(
+        'function Assert-TautWeeklyUserEmailOverrides',
+        'UserEmailOverrides supports at most 2000 assignments',
+        'DeliveryEmail = \$deliveryEmail',
+        'User\.DeliveryEmail',
         '"VerifyPlex"',
         'function Test-TautWeeklyDirectPlexConnection',
         '"/identity"',
@@ -464,6 +471,13 @@ foreach ($relative in @(
         'TautWeeklyResultErrorCategory = "render-failed"',
         'TautWeeklyResultErrorCategory = "output-failed"'
     )
+}
+foreach ($relative in @(
+    'platforms/nas-docker/app/config.example.json',
+    'platforms/mac-docker/app/config.example.json',
+    'platforms/windows/config.example.json'
+)) {
+    Require-Text $relative @('"UserEmailOverrides"\s*:\s*\{\}')
 }
 foreach ($relative in @(
     'platforms/nas-docker/app/bin/run-mode.sh',

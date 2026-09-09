@@ -18,7 +18,14 @@ public ingress and opens from an ordinary remote browser without installing
 Tailscale on that viewer. The Docker and Native Linux distributions use the
 same Manager and newsletter behavior with package-specific lifecycle adapters.
 
-Current source baseline: **1.7.0**.
+Current source baseline: **1.8.0**.
+
+Manager Config shows a separate **Managed-user delivery addresses** card when
+Tautulli reports an active user without native email. Assignments stay in
+private `/data/config.json` and its backups, may share an inbox, and never
+override a native address. Existing user-ID and effective-address exclusions
+still apply; TestEmail remains isolated. See the
+[configuration reference](../CONFIGURATION.md#interactive-user-exclusions).
 
 > [!IMPORTANT]
 > The authenticated Manager is the setup source for every target in this
@@ -360,13 +367,13 @@ Apps users can invoke the equivalent fallback from the container Console:
 
 The command changes only `ExcludedUserIds`; manually maintained
 `ExcludedEmails` entries are preserved. Excluded users are skipped by the
-scheduler and SendAll. Preview/TestEmail modes and the separately confirmed
-one-off welcome remain explicit administrator tools. Treat the displayed
-names and email addresses as private recipient data.
+scheduler, SendAll, and the separately confirmed one-off welcome. Preview and
+TestEmail modes remain explicit administrator tools. Treat the displayed names,
+native emails, and fallback addresses as private recipient data.
 
 In Manager Config and the terminal fallback, checked/selected rows mean
-**excluded**, not selected for delivery. Unchecked active users with an email
-address remain eligible even when Tautulli's legacy notification-agent
+**excluded**, not selected for delivery. Unchecked active users with a native
+or assigned fallback address remain eligible even when Tautulli's legacy notification-agent
 `do_notify` value is disabled. A manual or scheduled SendAll with no eligible
 recipient is recorded as a failed no-delivery attempt with only fixed aggregate
 skip reasons; it is never presented as SMTP-accepted success.

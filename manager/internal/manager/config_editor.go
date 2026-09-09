@@ -22,6 +22,11 @@ import (
 
 const missingConfigRevision = "missing"
 
+const (
+	maximumUserEmailOverrides = 2000
+	maximumDeliveryEmailRunes = 254
+)
+
 var (
 	ErrConfigConflict            = errors.New("configuration changed after it was loaded")
 	ErrConfigInvalid             = errors.New("existing configuration is not valid JSON")
@@ -180,6 +185,7 @@ func configDefinitions() []configDefinition {
 		{Name: "CustomTextCardBody", Label: "Card body (required when enabled)", Group: "Custom text card", Type: "textarea", Default: "", Max: customBodyMax, Help: "Plain text only. Line breaks are preserved and HTML is always escaped."},
 		{Name: "IncludedLibraryIds", Label: "Included library IDs", Group: "Advanced", Type: "string-list", Help: "Comma-separated Tautulli section IDs. Empty retains legacy all-library scope.", Default: []string{}},
 		{Name: "ExcludedUserIds", Label: "Excluded user IDs", Group: "Advanced", Type: "string-list", Help: "Comma-separated Tautulli user IDs.", Default: []string{}},
+		{Name: "UserEmailOverrides", Label: "Managed-user delivery addresses", Group: "Advanced", Type: "user-email-map", Help: "Private fallback delivery addresses keyed by numeric Tautulli user ID. Manager exposes assignments only in the authenticated guided Config flow.", Default: map[string]string{}},
 		{Name: "ExcludedEmails", Label: "Excluded email addresses", Group: "Advanced", Type: "email-list", Help: "Legacy config-file exclusion list preserved by the Manager but not exposed in the GUI.", Default: []string{}},
 	}
 }
@@ -412,8 +418,12 @@ func classifyConfigPostSave(current, next map[string]any, existed bool) ConfigPo
 		case strings.HasPrefix(name, "CustomTextCard"):
 			category["custom-text-card"] = true
 			plan.GeneratePreviews = true
-		case name == "IncludedLibraryIds" || name == "ExcludedUserIds" || name == "ExcludedEmails":
+		case name == "IncludedLibraryIds":
 			category["libraries"] = true
+			cacheCoverageChanged = true
+			plan.GeneratePreviews = true
+		case name == "ExcludedUserIds" || name == "ExcludedEmails" || name == "UserEmailOverrides":
+			category["recipients"] = true
 			cacheCoverageChanged = true
 			plan.GeneratePreviews = true
 		case name == "DaysBack" || name == "RecentAccessDays" || name == "WatchedPercent" || name == "MaxMovies" || name == "MaxTv":
@@ -436,7 +446,7 @@ func classifyConfigPostSave(current, next map[string]any, existed bool) ConfigPo
 	plan.WarmCache = cacheEnabled && cacheCoverageChanged
 	plan.VerifyCache = cacheEnabled
 	plan.MaterialChange = len(changed) > 0
-	for _, name := range []string{"tautulli", "plex", "smtp", "identity", "email", "schedule", "newsletter", "cache", "custom-text-card", "libraries", "delivery"} {
+	for _, name := range []string{"tautulli", "plex", "smtp", "identity", "email", "schedule", "newsletter", "cache", "custom-text-card", "libraries", "recipients", "delivery"} {
 		if category[name] {
 			plan.ChangedCategories = append(plan.ChangedCategories, name)
 		}
@@ -557,6 +567,9 @@ func editorValue(value any, definition configDefinition) any {
 		}
 		return result
 	}
+	if definition.Type == "user-email-map" {
+		return value
+	}
 	if number, ok := value.(json.Number); ok {
 		parsed, err := number.Int64()
 		if err == nil {
@@ -619,6 +632,42 @@ func parseAndValidateConfigValue(raw json.RawMessage, definition configDefinitio
 				seen[strings.ToLower(text)] = struct{}{}
 				result = append(result, text)
 			}
+		}
+		return result, ""
+	case "user-email-map":
+		if hasDuplicateUserEmailOverrideKeys(raw) {
+			return nil, "Each Tautulli user ID may appear only once."
+		}
+		items, ok := value.(map[string]any)
+		if !ok {
+			return nil, "Submit delivery addresses as an object keyed by Tautulli user ID."
+		}
+		result := make(map[string]string, len(items))
+		seen := make(map[string]struct{}, len(items))
+		for rawID, rawAddress := range items {
+			id := strings.TrimSpace(rawID)
+			if !validTautulliUserID(id) {
+				return nil, "Every delivery-address key must be a valid numeric Tautulli user ID."
+			}
+			if _, duplicate := seen[id]; duplicate {
+				return nil, "Each normalized Tautulli user ID may appear only once."
+			}
+			seen[id] = struct{}{}
+			address, ok := rawAddress.(string)
+			if !ok {
+				return nil, fmt.Sprintf("Delivery address for user %s must be text.", id)
+			}
+			address = strings.TrimSpace(address)
+			if address == "" {
+				continue
+			}
+			if utf8.RuneCountInString(address) > maximumDeliveryEmailRunes || !validEmail(address) {
+				return nil, fmt.Sprintf("Delivery address for user %s is not a valid email address of %d characters or fewer.", id, maximumDeliveryEmailRunes)
+			}
+			result[id] = address
+		}
+		if len(result) > maximumUserEmailOverrides {
+			return nil, fmt.Sprintf("Configure no more than %d managed-user delivery addresses.", maximumUserEmailOverrides)
 		}
 		return result, ""
 	default:
@@ -758,6 +807,31 @@ func existingConfigIssues(values map[string]any) map[string]string {
 func validEmail(value string) bool {
 	address, err := mail.ParseAddress(value)
 	return err == nil && address.Address == value
+}
+
+func hasDuplicateUserEmailOverrideKeys(raw json.RawMessage) bool {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	opening, err := decoder.Token()
+	if err != nil || opening != json.Delim('{') {
+		return false
+	}
+	seen := make(map[string]struct{})
+	for decoder.More() {
+		key, err := decoder.Token()
+		if err != nil {
+			return false
+		}
+		normalized := strings.TrimSpace(fmt.Sprint(key))
+		if _, duplicate := seen[normalized]; duplicate {
+			return true
+		}
+		seen[normalized] = struct{}{}
+		var ignored json.RawMessage
+		if decoder.Decode(&ignored) != nil {
+			return false
+		}
+	}
+	return false
 }
 
 func validHTTPURL(value string) bool {

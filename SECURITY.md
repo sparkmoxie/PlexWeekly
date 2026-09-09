@@ -22,7 +22,7 @@ requires host acceptance testing before scheduled use.
 
 ## Operator responsibilities
 
-- Keep `config.json`, `.env`, state files, the deleted-item cache, logs,
+- Keep `config.json` (including managed-user fallback addresses), `.env`, state files, the deleted-item cache, logs,
   previews, and backups private.
 - Use provider-specific application passwords where available.
 - Keep the Manager/preview recovery listener on localhost. Do not replace that

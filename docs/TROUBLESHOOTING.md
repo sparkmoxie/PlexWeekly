@@ -97,6 +97,22 @@ bulk commands and that the runtime can reach the exact configured URL. A row
 from `get_user_names` remains selectable if detailed data is unavailable; no
 exclusion changes are saved only when neither endpoint yields selectable users.
 
+## A managed user has no delivery address
+
+Open Manager **Config** and refresh Tautulli choices. The separate
+**Managed-user delivery addresses** card appears only for active users whose
+live Tautulli record has no native email. Enter a valid address and save; shared
+inboxes are allowed. If the card is absent, confirm the user is active and the
+discovery result is current. A live native Tautulli email always takes
+precedence, so an assignment cannot redirect that account.
+
+If the user is still skipped, check `ExcludedUserIds` first and then
+`ExcludedEmails` for the assigned effective address. Clearing an assignment
+intentionally returns the user to `missingEmail`; it does not change prior
+welcome/history state. A failed discovery refresh retains the prior sanitized
+choices and private assignments. Do not post `config.json` or its backups when
+requesting help because they contain the fallback addresses.
+
 ## Container is unhealthy
 
 Update to v0.5.3 or newer before investigating an unhealthy Docker service.

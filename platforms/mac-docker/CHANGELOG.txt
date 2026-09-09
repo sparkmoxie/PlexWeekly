@@ -1,6 +1,12 @@
 TAUTWEEKLY FOR PLEX MAC PORTABLE CHANGELOG
 ================================
 
+v1.8.0 Portable
+---------------
+- adds private fallback delivery addresses for active Tautulli users without native email
+- keeps native email authoritative, applies existing exclusions to the effective address, and preserves TestEmail isolation
+- omits fallback addresses from sanitized discovery, operation results, diagnostics, and shareable cache reports
+
 v1.7.0 Portable
 ---------------
 - adds password-gated public Tailscale Funnel to the maintained Docker Desktop package
