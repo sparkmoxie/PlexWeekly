@@ -249,13 +249,15 @@ try {
             SimulateManagerStopFailure = $true
         }
         $stopFailureObserved = $false
+        $stopFailureMessage = ''
         try {
             & (Join-Path $relaunchCandidateRoot 'Windows-Update.ps1') @stopFailureArguments
         }
         catch {
-            $stopFailureObserved = $_.Exception.Message -match 'Simulated post-stop failure'
+            $stopFailureMessage = [string]$_.Exception.Message
+            $stopFailureObserved = $stopFailureMessage -match 'Simulated post-stop failure'
         }
-        Assert-True $stopFailureObserved 'Post-stop recovery fixture did not report the simulated updater failure.'
+        Assert-True $stopFailureObserved "Post-stop recovery fixture did not report the simulated updater failure. Actual error: $stopFailureMessage"
         Assert-True ($runningManager.WaitForExit(20000)) 'Post-stop recovery fixture did not stop the original Manager process.'
         $stopFailureResult = Get-Content -LiteralPath $stopFailureResultPath -Raw | ConvertFrom-Json
         Assert-True ([string]$stopFailureResult.Status -eq 'failed') 'Post-stop recovery fixture did not retain the expected failed update result.'
@@ -275,7 +277,7 @@ try {
             }
             catch { }
         } while ((-not $restartHealthy -or $stopRecoveryOwners.Count -ne 1) -and (Get-Date) -lt $restartDeadline)
-        Assert-True ($restartHealthy -and $stopRecoveryOwners.Count -eq 1) 'Post-stop updater failure stranded the Manager listener.'
+        Assert-True ($restartHealthy -and $stopRecoveryOwners.Count -eq 1) "Post-stop updater failure stranded the Manager listener. Updater result: $([string]$stopFailureResult.Message)"
         Assert-True ([int]$stopRecoveryOwners[0] -ne $runningManager.Id) 'Post-stop updater failure did not replace the terminated Manager process.'
         $runningManager.Dispose()
         $runningManager = Get-Process -Id ([int]$stopRecoveryOwners[0]) -ErrorAction Stop
@@ -429,7 +431,14 @@ finally {
     if (Test-Path -LiteralPath $testRoot) {
         $resolved = [IO.Path]::GetFullPath($testRoot)
         if ($resolved.StartsWith($tempParent, [StringComparison]::OrdinalIgnoreCase) -and (Split-Path -Leaf $resolved).StartsWith('tautweekly-installer-test-', [StringComparison]::Ordinal)) {
-            Remove-Item -LiteralPath $resolved -Recurse -Force -ErrorAction SilentlyContinue
+            try {
+                Remove-Item -LiteralPath $resolved -Recurse -Force -ErrorAction Stop
+            }
+            catch {
+                if (Test-Path -LiteralPath $resolved) {
+                    Write-Warning "Could not completely remove installer test workspace '$resolved': $($_.Exception.Message)"
+                }
+            }
         }
     }
 }
