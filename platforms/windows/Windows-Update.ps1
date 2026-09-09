@@ -315,7 +315,18 @@ function Stop-InstalledManager {
             throw 'The exact packaged Manager process did not stop for the update.'
         }
     }
-    if (@(Get-InstalledManagerProcesses).Count -ne 0) {
+    # A terminated executable can remain visible to a fresh Get-Process query
+    # briefly after its original process object reports exit. Give Windows a
+    # bounded interval to retire that record before treating it as a live
+    # same-install Manager. A replacement process still fails closed below.
+    $remainingManagerProcesses = @()
+    $processRetirementDeadline = (Get-Date).AddSeconds(5)
+    do {
+        $remainingManagerProcesses = @(Get-InstalledManagerProcesses)
+        if ($remainingManagerProcesses.Count -eq 0) { break }
+        Start-Sleep -Milliseconds 100
+    } while ((Get-Date) -lt $processRetirementDeadline)
+    if ($remainingManagerProcesses.Count -ne 0) {
         throw 'The exact packaged Manager process is still running after the update stop.'
     }
     if ($SimulateManagerStopFailure) {
@@ -358,8 +369,13 @@ function Start-InstalledManager {
     if (-not (Test-Path -LiteralPath $managerPath -PathType Leaf)) {
         throw 'The packaged Manager executable is unavailable after the update.'
     }
-    $reportedVersion = @(& $managerPath version 2>$null | Select-Object -First 1)
-    if ($LASTEXITCODE -ne 0 -or $reportedVersion.Count -ne 1 -or [string]$reportedVersion[0] -ne "TautWeekly Manager $TargetVersion") {
+    # Capture the native exit code before using a PowerShell pipeline. When the
+    # executable is the first native command in a strict-mode session, piping it
+    # directly to Select-Object can leave LASTEXITCODE undefined.
+    $reportedVersion = @(& $managerPath version 2>$null)
+    $managerVersionExitCode = $LASTEXITCODE
+    $reportedVersion = @($reportedVersion | Select-Object -First 1)
+    if ($managerVersionExitCode -ne 0 -or $reportedVersion.Count -ne 1 -or [string]$reportedVersion[0] -ne "TautWeekly Manager $TargetVersion") {
         throw 'The packaged Manager executable does not report the requested update version.'
     }
     $dataRoot = Resolve-ManagerDataRoot

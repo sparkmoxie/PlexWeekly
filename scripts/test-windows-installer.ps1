@@ -249,13 +249,15 @@ try {
             SimulateManagerStopFailure = $true
         }
         $stopFailureObserved = $false
+        $stopFailureMessage = ''
         try {
             & (Join-Path $relaunchCandidateRoot 'Windows-Update.ps1') @stopFailureArguments
         }
         catch {
-            $stopFailureObserved = $_.Exception.Message -match 'Simulated post-stop failure'
+            $stopFailureMessage = [string]$_.Exception.Message
+            $stopFailureObserved = $stopFailureMessage -match 'Simulated post-stop failure'
         }
-        Assert-True $stopFailureObserved 'Post-stop recovery fixture did not report the simulated updater failure.'
+        Assert-True $stopFailureObserved "Post-stop recovery fixture did not report the simulated updater failure. Actual error: $stopFailureMessage"
         Assert-True ($runningManager.WaitForExit(20000)) 'Post-stop recovery fixture did not stop the original Manager process.'
         $stopFailureResult = Get-Content -LiteralPath $stopFailureResultPath -Raw | ConvertFrom-Json
         Assert-True ([string]$stopFailureResult.Status -eq 'failed') 'Post-stop recovery fixture did not retain the expected failed update result.'
@@ -275,7 +277,7 @@ try {
             }
             catch { }
         } while ((-not $restartHealthy -or $stopRecoveryOwners.Count -ne 1) -and (Get-Date) -lt $restartDeadline)
-        Assert-True ($restartHealthy -and $stopRecoveryOwners.Count -eq 1) 'Post-stop updater failure stranded the Manager listener.'
+        Assert-True ($restartHealthy -and $stopRecoveryOwners.Count -eq 1) "Post-stop updater failure stranded the Manager listener. Updater result: $([string]$stopFailureResult.Message)"
         Assert-True ([int]$stopRecoveryOwners[0] -ne $runningManager.Id) 'Post-stop updater failure did not replace the terminated Manager process.'
         $runningManager.Dispose()
         $runningManager = Get-Process -Id ([int]$stopRecoveryOwners[0]) -ErrorAction Stop
@@ -347,6 +349,25 @@ try {
                 finally {
                     $processToStop.Dispose()
                 }
+            }
+        }
+        # The synthetic retained-Funnel shutdown intentionally leaves its
+        # privileged helper waiting for a callback after the Manager is forced
+        # down. Stop only helpers launched from this isolated test installation
+        # so they cannot hold the disposable program directory open.
+        $isolatedHelperPath = [IO.Path]::GetFullPath((Join-Path $installRoot 'TAILSCALE-HELPER.ps1'))
+        $isolatedHelpers = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+            [string]$_.CommandLine -and [string]$_.CommandLine.IndexOf($isolatedHelperPath, [StringComparison]::OrdinalIgnoreCase) -ge 0
+        })
+        foreach ($isolatedHelper in $isolatedHelpers) {
+            $helperProcess = Get-Process -Id ([int]$isolatedHelper.ProcessId) -ErrorAction SilentlyContinue
+            if ($null -eq $helperProcess) { continue }
+            try {
+                Stop-Process -Id $helperProcess.Id -Force -ErrorAction SilentlyContinue
+                [void]$helperProcess.WaitForExit(10000)
+            }
+            finally {
+                $helperProcess.Dispose()
             }
         }
     }
@@ -429,7 +450,14 @@ finally {
     if (Test-Path -LiteralPath $testRoot) {
         $resolved = [IO.Path]::GetFullPath($testRoot)
         if ($resolved.StartsWith($tempParent, [StringComparison]::OrdinalIgnoreCase) -and (Split-Path -Leaf $resolved).StartsWith('tautweekly-installer-test-', [StringComparison]::Ordinal)) {
-            Remove-Item -LiteralPath $resolved -Recurse -Force -ErrorAction SilentlyContinue
+            try {
+                Remove-Item -LiteralPath $resolved -Recurse -Force -ErrorAction Stop
+            }
+            catch {
+                if (Test-Path -LiteralPath $resolved) {
+                    Write-Warning "Could not completely remove installer test workspace '$resolved': $($_.Exception.Message)"
+                }
+            }
         }
     }
 }
