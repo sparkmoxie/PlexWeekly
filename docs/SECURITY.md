@@ -215,6 +215,12 @@ Production uses a fallback only when Tautulli has no native email and evaluates
 the effective address against the existing exclusion policy. TestEmail modes
 never use the fallback map.
 
+The reserved Tautulli Local identity (user ID `0`) is never a newsletter
+recipient, even if private configuration contains a fallback address for it.
+Individual user lookups must match the requested ID; Tautulli's default Local
+response is not accepted as another user's identity. Failed matches use an
+exact bulk-roster match or fail closed before personalized generation or send.
+
 Scheduled weekly messages share only the Binge Champion's anonymous aggregate:
 total watch time, total plays, and nonzero unique movie and TV-show counts. When
 more than one episode qualifies, the cumulative episode count across those TV

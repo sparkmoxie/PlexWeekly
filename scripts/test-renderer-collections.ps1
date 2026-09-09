@@ -55,8 +55,16 @@ $requiredFunctions = @(
     'Get-PlexWatchRatings',
     'Get-TautulliDefaultPosterHash',
     'Get-FileSha256',
+    'Test-TautulliLocalUserId',
     'Get-TautulliUser',
+    'Get-TautulliUserNames',
     'Get-TautulliUsers',
+    'Resolve-TautulliUserId',
+    'Add-AccessStateUser',
+    'Test-UserNeedsWelcome',
+    'Mark-UserWelcomed',
+    'Get-NewsletterUser',
+    'Get-UserSkipReason',
     'Safe-Int',
     'Safe-Int64',
     'New-ReleaseData',
@@ -605,6 +613,79 @@ foreach ($relativePath in $rendererPaths) {
     $fallbackUser = Get-TautulliUser -Id '145330906'
     Assert-True ([string]$fallbackUser.user_id -eq '145330906') "$relativePath did not recover the requested user from get_users"
     Assert-True (($script:tautulliUserCalls -join ',') -eq 'get_user,get_users') "$relativePath did not use the bulk-user fallback after get_user failed"
+
+    # Tautulli can return its default Local record for an unavailable get_user ID.
+    # Identity, not the requested query or a friendly name, must authorize a result.
+    $realLocal = [PSCustomObject]@{ user_id = '42'; username = 'local-profile'; friendly_name = 'Local'; email = 'local-profile@example.com'; is_active = 1; deleted_user = 0; do_notify = 1 }
+    $reservedLocal = [PSCustomObject]@{ user_id = 0; username = 'Local'; friendly_name = 'Local'; email = ''; is_active = 1; deleted_user = 0; do_notify = 1 }
+    $script:bulkLookupUsers = @($reservedLocal, $realLocal)
+    $script:directLookupUser = $reservedLocal
+    function Invoke-TautulliApi {
+        param([string]$Command, [hashtable]$Parameters = @{})
+        $script:tautulliUserCalls.Add($Command)
+        if ($Command -eq 'get_user') { return $script:directLookupUser }
+        if ($Command -in @('get_users', 'get_user_names')) { return $script:bulkLookupUsers }
+        throw "Unexpected identity-test command: $Command"
+    }
+    foreach ($mismatchedResponse in @(
+        $reservedLocal,
+        [PSCustomObject]@{ user_id = '0'; email = 'reserved@example.com' },
+        [PSCustomObject]@{ user_id = '99'; email = 'wrong-user@example.com' },
+        [PSCustomObject]@{ email = 'missing-id@example.com' }
+    )) {
+        $script:directLookupUser = $mismatchedResponse
+        $script:tautulliUserCalls.Clear()
+        $identityFallback = Get-TautulliUser -Id '42'
+        Assert-True ([string]$identityFallback.user_id -eq '42' -and $identityFallback.email -eq 'local-profile@example.com') "$relativePath accepted mismatched direct lookup details"
+        Assert-True (($script:tautulliUserCalls -join ',') -eq 'get_user,get_users') "$relativePath did not use the exact bulk match after a mismatched direct response"
+    }
+    $script:bulkLookupUsers = @($reservedLocal)
+    $script:directLookupUser = $reservedLocal
+    $unavailableThrew = $false
+    try { Get-TautulliUser -Id '42' | Out-Null } catch { $unavailableThrew = $true }
+    Assert-True $unavailableThrew "$relativePath substituted Local for an unavailable requested user"
+    foreach ($localId in @(0, '0', '000')) {
+        $script:tautulliUserCalls.Clear()
+        $reservedThrew = $false
+        try { Get-TautulliUser -Id $localId | Out-Null } catch { $reservedThrew = $true }
+        Assert-True ($reservedThrew -and $script:tautulliUserCalls.Count -eq 0) "$relativePath looked up reserved user '$localId' instead of rejecting it locally"
+        Assert-True (Test-TautulliLocalUserId -Id $localId) "$relativePath failed to recognize reserved zero '$localId'"
+    }
+    Assert-True (-not (Test-TautulliLocalUserId -Id '42')) "$relativePath classified a real positive user ID as reserved"
+    $script:bulkLookupUsers = @($reservedLocal, [PSCustomObject]@{ user_id = '0'; friendly_name = 'Renamed reserved user' }, $realLocal)
+    Assert-True ((@(Get-TautulliUsers).user_id -join ',') -eq '42') "$relativePath exposed reserved Local through the detailed user roster"
+    Assert-True ((@(Get-TautulliUserNames).user_id -join ',') -eq '42') "$relativePath exposed reserved Local through the name roster"
+    Assert-True ((Resolve-TautulliUserId -Identifier 'Local') -eq '42') "$relativePath excluded a real user whose friendly name is Local"
+    $script:bulkLookupUsers = @([PSCustomObject]@{ user_id = '42'; username = '0'; friendly_name = '0'; email = 'real-zero-name@example.com' })
+    foreach ($localIdentifier in @('0', '000')) {
+        $script:tautulliUserCalls.Clear()
+        $reservedIdentifierThrew = $false
+        try { Resolve-TautulliUserId -Identifier $localIdentifier | Out-Null } catch { $reservedIdentifierThrew = $true }
+        Assert-True ($reservedIdentifierThrew -and $script:tautulliUserCalls.Count -eq 0) "$relativePath interpreted reserved identifier '$localIdentifier' as another profile's name"
+    }
+    $script:bulkLookupUsers = @($reservedLocal, $realLocal)
+    $script:directLookupUser = $realLocal
+    $script:tautulliUserCalls.Clear()
+    $directMatch = Get-TautulliUser -Id '42'
+    Assert-True ([string]$directMatch.user_id -eq '42' -and ($script:tautulliUserCalls -join ',') -eq 'get_user') "$relativePath did not accept an exact direct lookup match"
+
+    $recipientConfig = $script:Config
+    $script:Config = [PSCustomObject]@{ UserEmailOverrides = [PSCustomObject]@{ '0' = 'legacy-local@example.com' }; ExcludedUserIds = @(); ExcludedEmails = @() }
+    $localRecipient = [PSCustomObject]@{ UserId = '0'; IsActive = 1; DeletedUser = 0; Email = 'legacy-local@example.com'; DeliveryEmail = 'legacy-local@example.com' }
+    Assert-True ((Get-UserSkipReason -User $localRecipient) -eq 'excludedUserId') "$relativePath allowed a legacy fallback or native email to make reserved Local eligible"
+    Assert-True ([string]::IsNullOrWhiteSpace((Get-UserSkipReason -User (Get-NewsletterUser -Id '42')))) "$relativePath made a real Local-named profile ineligible"
+    $state = [PSCustomObject]@{ Users = [PSCustomObject]@{} }
+    Add-AccessStateUser -State $state -User $reservedLocal -IsBaseline $true
+    Assert-True ($null -eq $state.Users.PSObject.Properties['0']) "$relativePath added reserved Local to a fresh access baseline"
+    Add-AccessStateUser -State $state -User $realLocal -IsBaseline $false
+    Assert-True (Test-UserNeedsWelcome -State $state -UserId '42') "$relativePath lost welcome eligibility for a real Local-named profile"
+    $legacyEntry = [PSCustomObject]@{ UserId = '0'; IsBaseline = $false; FirstSeenUtc = [DateTime]::UtcNow.ToString('o'); WelcomeSentUtc = '' }
+    $state.Users | Add-Member -NotePropertyName '0' -NotePropertyValue $legacyEntry
+    Assert-True (-not (Test-UserNeedsWelcome -State $state -UserId '0')) "$relativePath welcomed a legacy Local access-state entry"
+    function Save-AccessState { throw 'Reserved Local must not save welcome state.' }
+    Mark-UserWelcomed -State $state -UserId '0'
+    Assert-True ([string]::IsNullOrWhiteSpace($legacyEntry.WelcomeSentUtc)) "$relativePath marked reserved Local as welcomed"
+    $script:Config = $recipientConfig
 
     $movie = [PSCustomObject]@{
         media_type      = 'movie'

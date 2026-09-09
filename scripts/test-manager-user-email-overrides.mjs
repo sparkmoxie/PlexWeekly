@@ -70,6 +70,8 @@ const context = {
 };
 vm.createContext(context);
 vm.runInContext(`
+  ${functionSource("validPreviewUserID")}
+  ${functionSource("discoveredNewsletterUsers")}
   ${functionSource("currentUserEmailOverrides")}
   ${functionSource("setUserEmailOverride")}
   ${functionSource("managedUserAddressState")}
@@ -80,6 +82,8 @@ vm.runInContext(`
   globalThis.addressState = managedUserAddressState;
   globalThis.collect = collectConfigSaveRequest;
   globalThis.discoveryFailure = discoveryFailureMessage;
+  globalThis.newsletterUsers = discoveredNewsletterUsers;
+  globalThis.validUserID = validPreviewUserID;
 `, context);
 
 assert.deepEqual(structuredClone(context.currentAssignments()), { 3: "family@example.org", 999: "orphan@example.org" });
@@ -93,6 +97,24 @@ assert.deepEqual(structuredClone(context.collect().values), {
 }, "configuration save did not preserve duplicate inboxes, orphan mappings, and TestEmail isolation");
 assert.match(context.discoveryFailure("fixture refresh unavailable"), /Cached choices.*remain visible and usable/, "a failed discovery refresh no longer retains usable assignments");
 assert.equal(context.currentAssignments()["3"], "shared@example.org", "a failed discovery refresh erased an assignment");
+
+state.discovery.users.push(
+  { id: "0", name: "Local", eligibility: "address-needed", needsDeliveryAddress: true },
+  { id: "000", name: "Anonymous", eligibility: "eligible", needsDeliveryAddress: true },
+  { id: "42", name: "Local", eligibility: "address-needed", needsDeliveryAddress: true },
+);
+assert.deepEqual(Array.from(context.newsletterUsers(), (user) => user.id), ["3", "42"], "Local filtering must use numeric identity, not display name");
+for (const id of ["0", "00", "00000000000000000000"]) {
+  assert.equal(context.validUserID(id), false, `reserved user ${id} remained selectable for a newsletter`);
+  context.setAssignment(id, "anonymous@example.org");
+  assert.equal(context.currentAssignments()[id], undefined, `reserved user ${id} gained a delivery assignment`);
+}
+hidden.value = JSON.stringify({ ...context.currentAssignments(), 0: "legacy@example.org" });
+context.setAssignment("0", "replacement@example.org");
+assert.equal(context.currentAssignments()["0"], "legacy@example.org", "an upgrade should retain existing inert Local config without modifying it");
+for (const name of ["renderManagedUserDeliveryAddresses", "renderDiscoveredUsers", "renderDiscoveryUserCount", "renderUserDatalist", "renderUserComboboxOptions"]) {
+  assert.match(functionSource(name), /discoveredNewsletterUsers\(\)/, `${name} bypassed the shared recipient identity filter`);
+}
 
 function checkAddress(value, valid) {
   const input = { value, validity: { valid }, attributes: {}, setAttribute(name, next) { this.attributes[name] = next; } };

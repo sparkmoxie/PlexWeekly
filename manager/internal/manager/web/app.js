@@ -840,7 +840,7 @@ function renderDashboardGreeting(observedAtUtc) {
 function discoveredAdministratorName() {
   const suggestedID = String(state.discovery?.suggestedPreviewUserId || "");
   if (!suggestedID) return "";
-  const user = (state.discovery?.users || []).find((candidate) => String(candidate.id) === suggestedID);
+  const user = discoveredNewsletterUsers().find((candidate) => String(candidate.id) === suggestedID);
   const name = String(user?.name || "").trim();
   return name && !/^User \d+$/i.test(name) ? name : "";
 }
@@ -1213,6 +1213,7 @@ function currentUserEmailOverrides() {
 }
 
 function setUserEmailOverride(userID, address) {
+  if (!validPreviewUserID(userID)) return;
   const input = byId("config-UserEmailOverrides");
   if (!input) return;
   const assignments = currentUserEmailOverrides();
@@ -1229,10 +1230,14 @@ function managedUserAddressState(input, status) {
   input.setAttribute("aria-invalid", String(!valid));
 }
 
+function discoveredNewsletterUsers() {
+  return (state.discovery?.users || []).filter((user) => validPreviewUserID(String(user.id)));
+}
+
 function renderManagedUserDeliveryAddresses() {
   const card = byId("managed-user-delivery-addresses");
   const container = byId("managed-user-delivery-list");
-  const users = (state.discovery?.users || [])
+  const users = discoveredNewsletterUsers()
     .filter((user) => user.needsDeliveryAddress === true)
     .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: "base" }));
   card.hidden = !state.discovery || users.length === 0;
@@ -1314,7 +1319,7 @@ function renderDiscoveredLibraries() {
 function renderDiscoveredUsers() {
   const container = byId("discovery-users");
   container.replaceChildren();
-  const users = state.discovery?.users || [];
+  const users = discoveredNewsletterUsers();
   const configured = new Set(currentListField("ExcludedUserIds"));
   renderDiscoveryUserCount(users);
   const orderedUsers = [...users].sort((left, right) => {
@@ -1354,7 +1359,7 @@ function renderDiscoveredUsers() {
   }
 }
 
-function renderDiscoveryUserCount(users = state.discovery?.users || []) {
+function renderDiscoveryUserCount(users = discoveredNewsletterUsers()) {
   const current = new Set(currentListField("ExcludedUserIds"));
   const saved = new Set(savedListField("ExcludedUserIds"));
   const changed = users.some((item) => current.has(item.id) !== saved.has(item.id));
@@ -1372,7 +1377,7 @@ function renderDiscoveryUserCount(users = state.discovery?.users || []) {
 function renderUserDatalist() {
   const list = byId("tautulli-user-choices");
   list.replaceChildren();
-  for (const item of state.discovery?.users || []) {
+  for (const item of discoveredNewsletterUsers()) {
     const option = document.createElement("option");
     option.value = item.id;
     option.label = `${item.name} · ${titleCase(item.eligibility)}${item.role ? ` · ${titleCase(item.role)}` : ""}`;
@@ -1388,7 +1393,7 @@ function renderUserComboboxOptions(container) {
   const input = container.querySelector("input");
   const list = container.querySelector(".user-combobox-options");
   const query = container.dataset.filter === "true" ? input.value.trim().toLowerCase() : "";
-  const users = (state.discovery?.users || []).filter((item) => !query || item.id.includes(query) || item.name.toLowerCase().includes(query));
+  const users = discoveredNewsletterUsers().filter((item) => !query || item.id.includes(query) || item.name.toLowerCase().includes(query));
   list.replaceChildren();
   if (!users.length) {
     const empty = document.createElement("p");
@@ -3211,7 +3216,7 @@ function operationIsActive(operation) {
 function validPreviewUserID(value) {
   if (!/^[0-9]{1,20}$/.test(value)) return false;
   const parsed = BigInt(value);
-  return parsed <= 18446744073709551615n;
+  return parsed > 0n && parsed <= 18446744073709551615n;
 }
 
 async function startPreviewOperation() {

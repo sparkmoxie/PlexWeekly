@@ -59,6 +59,7 @@ function ConvertTo-TautWeeklySelectableUsers {
         $userId = [string](Get-TautWeeklyObjectValue -InputObject $user -Name 'user_id' -Default '')
         if ([string]::IsNullOrWhiteSpace($userId)) { continue }
         $userId = $userId.Trim()
+        if ($userId -match '^0+$') { continue }
         if (-not $detailsById.ContainsKey($userId)) { $detailsById[$userId] = $user }
         if ($seenIds.Add($userId)) { $ids.Add($userId) }
     }
@@ -67,6 +68,7 @@ function ConvertTo-TautWeeklySelectableUsers {
         $userId = [string](Get-TautWeeklyObjectValue -InputObject $name -Name 'user_id' -Default '')
         if ([string]::IsNullOrWhiteSpace($userId)) { continue }
         $userId = $userId.Trim()
+        if ($userId -match '^0+$') { continue }
         $friendly = [string](Get-TautWeeklyObjectValue -InputObject $name -Name 'friendly_name' -Default '')
         if (-not [string]::IsNullOrWhiteSpace($friendly)) { $friendlyById[$userId] = $friendly }
         if ($seenIds.Add($userId)) { $ids.Add($userId) }

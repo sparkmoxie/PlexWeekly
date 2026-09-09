@@ -43,24 +43,41 @@ $invalid = ConvertFrom-TautWeeklyExcludedSelection -Selection '0' -Users $users
 Assert-Equal -Name 'Out-of-range rows are rejected' -Actual ([bool]$invalid.Valid) -Expected $false
 
 $nameRows = @(
-    [PSCustomObject]@{ user_id = '0'; friendly_name = 'Server Owner' },
-    [PSCustomObject]@{ user_id = '145330906'; friendly_name = 'Remote Viewer' }
+    [PSCustomObject]@{ user_id = '7'; friendly_name = 'Server Owner' },
+    [PSCustomObject]@{ user_id = '145330906'; friendly_name = 'Remote Viewer' },
+    [PSCustomObject]@{ user_id = '42'; friendly_name = 'Local' },
+    [PSCustomObject]@{ user_id = '0'; friendly_name = 'Local' }
 )
 $detailRows = @(
     [PSCustomObject]@{
-        user_id = '0'; username = 'owner'; email = 'owner@example.com'
+        user_id = '7'; username = 'owner'; email = 'owner@example.com'
         is_active = 1; do_notify = 0
+    },
+    [PSCustomObject]@{
+        user_id = '42'; username = 'local-profile'; email = 'local-profile@example.com'
+        is_active = 1; do_notify = 1
+    },
+    [PSCustomObject]@{
+        user_id = 0; username = 'Local'; email = 'reserved@example.com'
+        is_active = 1; do_notify = 1
     }
 )
 $mergedUsers = @(ConvertTo-TautWeeklySelectableUsers -Names $nameRows -DetailedUsers $detailRows)
-Assert-Equal -Name 'Bulk and name rosters are merged by stable ID' -Actual $mergedUsers.Count -Expected 2
-$owner = $mergedUsers | Where-Object UserId -eq '0' | Select-Object -First 1
+Assert-Equal -Name 'Bulk and name rosters are merged by stable ID without Local user zero' -Actual $mergedUsers.Count -Expected 3
+$owner = $mergedUsers | Where-Object UserId -eq '7' | Select-Object -First 1
 $viewer = $mergedUsers | Where-Object UserId -eq '145330906' | Select-Object -First 1
 Assert-Equal -Name 'Name roster supplies missing friendly name' -Actual $owner.FriendlyName -Expected 'Server Owner'
 Assert-Equal -Name 'Legacy Tautulli notification state does not suppress delivery eligibility' -Actual ([bool]$owner.Eligible) -Expected $true
 Assert-Equal -Name 'Name-only user remains selectable' -Actual $viewer.FriendlyName -Expected 'Remote Viewer'
 Assert-Equal -Name 'Name-only user is not marked delivery-eligible' -Actual ([bool]$viewer.Eligible) -Expected $false
 Assert-Equal -Name 'Name-only user reports unavailable details' -Actual ([bool]$viewer.DetailsAvailable) -Expected $false
+$namedLocal = $mergedUsers | Where-Object UserId -eq '42' | Select-Object -First 1
+Assert-Equal -Name 'A real profile named Local remains selectable and eligible' -Actual ($namedLocal.FriendlyName -eq 'Local' -and $namedLocal.Eligible) -Expected $true
+foreach ($localId in @(0, '0', '000')) {
+    $localRow = [PSCustomObject]@{ user_id = $localId; friendly_name = 'Renamed reserved user'; username = 'Local'; email = 'reserved@example.com'; is_active = 1; do_notify = 1 }
+    $localOnly = @(ConvertTo-TautWeeklySelectableUsers -Names @($localRow) -DetailedUsers @($localRow))
+    Assert-Equal -Name "Reserved numeric/string zero '$localId' never becomes selectable even with email" -Actual $localOnly.Count -Expected 0
+}
 
 $script:userApiCalls = New-Object System.Collections.Generic.List[string]
 function Invoke-TautWeeklyUserApi {
@@ -77,7 +94,7 @@ function Invoke-TautWeeklyUserApi {
 }
 $apiUsers = @(Get-TautWeeklySelectableUsers -TautulliUrl 'http://tautulli.example.test:8181' -ApiKey 'test-key')
 Assert-Equal -Name 'Roster uses two bulk API calls' -Actual ($script:userApiCalls -join ',') -Expected 'get_user_names,get_users'
-Assert-Equal -Name 'Bulk API roster remains selectable' -Actual $apiUsers.Count -Expected 2
+Assert-Equal -Name 'Bulk API roster remains selectable without reserved Local' -Actual $apiUsers.Count -Expected 3
 
 function Invoke-TautWeeklyUserApi {
     param(
@@ -90,8 +107,8 @@ function Invoke-TautWeeklyUserApi {
     throw 'Simulated get_users rejection'
 }
 $fallbackUsers = @(Get-TautWeeklySelectableUsers -TautulliUrl 'http://tautulli.example.test:8181' -ApiKey 'test-key')
-Assert-Equal -Name 'Names remain selectable when details fail' -Actual $fallbackUsers.Count -Expected 2
-Assert-Equal -Name 'Fallback keeps stable user IDs' -Actual (($fallbackUsers.UserId | Sort-Object) -join ',') -Expected '0,145330906'
+Assert-Equal -Name 'Names remain selectable when details fail without reserved Local' -Actual $fallbackUsers.Count -Expected 3
+Assert-Equal -Name 'Fallback keeps only real stable user IDs' -Actual (($fallbackUsers.UserId | Sort-Object) -join ',') -Expected '145330906,42,7'
 
 $libraryPaths = @(
     $windowsLibrary,

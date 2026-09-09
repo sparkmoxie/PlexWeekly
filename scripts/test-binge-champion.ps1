@@ -24,6 +24,7 @@ $requiredFunctions = @(
     'Get-HistoryRowPlayCount',
     'Test-HistoryRowQualifiedView',
     'Get-NewsletterPlatformHistoryTimestamp',
+    'Test-TautulliLocalUserId',
     'Get-BingeChampion',
     'Get-BingeChampionDisplay',
     'Get-BingeChampionTitleBreakdown'
@@ -106,6 +107,20 @@ foreach ($relativePath in $rendererPaths) {
     Assert-True ($champion.QualifyingMovies -eq 1) "$relativePath returned the wrong unique movie count"
     Assert-True ($champion.QualifyingTvShows -eq 1) "$relativePath returned the wrong unique TV-show count"
     Assert-True ($champion.TotalTimeText -eq '6h 0m') "$relativePath returned the wrong watch-time label"
+
+    foreach ($localId in @(0, '0', '000')) {
+        $anonymousHistory = @(
+            [PSCustomObject]@{ media_type = 'movie'; play_duration = 90000; watched_status = 1; percent_complete = 100; rating_key = 'anonymous-movie'; title = 'Anonymous Movie'; user_id = $localId; friendly_name = 'Renamed reserved user'; started = 400 }
+        )
+        $withAnonymous = Get-BingeChampion -GlobalHistory @($history + $anonymousHistory)
+        Assert-True ($withAnonymous.UserId -eq '10') "$relativePath selected reserved user '$localId' as Binge Champion"
+        Assert-True ($null -eq (Get-BingeChampion -GlobalHistory $anonymousHistory)) "$relativePath selected a champion when history only contains Local"
+        Assert-True ($anonymousHistory.Count -eq 1 -and $anonymousHistory[0].play_duration -eq 90000) "$relativePath mutated anonymous playback history while selecting a champion"
+    }
+    $namedLocalHistory = @(
+        [PSCustomObject]@{ media_type = 'movie'; play_duration = 3600; watched_status = 1; percent_complete = 100; rating_key = 'real-local-movie'; title = 'Real Local Movie'; user_id = '42'; friendly_name = 'Local'; started = 500 }
+    )
+    Assert-True ((Get-BingeChampion -GlobalHistory $namedLocalHistory).UserId -eq '42') "$relativePath excluded a real positive-ID profile named Local from Binge Champion"
 
     $winnerView = Get-BingeChampionDisplay -BingeChampion $champion -User ([PSCustomObject]@{
         UserId = '10'; FriendlyName = 'Private Winner'

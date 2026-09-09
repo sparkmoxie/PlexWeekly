@@ -52,6 +52,7 @@ $scenarios = @(
     [PSCustomObject]@{
         Name = 'all-legacy-notify-disabled'
         Users = @(
+            [PSCustomObject]@{ user_id = 0; username = 'Local'; friendly_name = 'Local'; email = ''; is_active = 1; deleted_user = 0; do_notify = 1 },
             (New-VirtualUser -Id '1' -Email 'viewer1@example.com' -Notify 0),
             (New-VirtualUser -Id '2' -Email 'viewer2@example.com' -Notify 0)
         )
@@ -115,11 +116,13 @@ $scenarios = @(
     [PSCustomObject]@{
         Name = 'managed-fallback-native-precedence-shared-inbox'
         Users = @(
+            [PSCustomObject]@{ user_id = '0'; username = 'Local'; friendly_name = 'Local'; email = ''; is_active = 1; deleted_user = 0; do_notify = 1 },
             (New-VirtualUser -Id '1' -Email ''),
             (New-VirtualUser -Id '2' -Email 'native2@example.com'),
-            (New-VirtualUser -Id '3' -Email '')
+            [PSCustomObject]@{ user_id = '3'; username = 'real-local-profile'; friendly_name = 'Local'; email = ''; is_active = 1; deleted_user = 0; do_notify = 1 }
         )
         UserEmailOverrides = [ordered]@{
+            '0' = 'legacy-reserved@example.com'
             '1' = 'shared-managed@example.com'
             '2' = 'must-not-reroute@example.com'
             '3' = 'shared-managed@example.com'
@@ -577,6 +580,14 @@ foreach ($engine in $engines) {
                 )
                 Assert-True (@($apiCommands | Where-Object { $_ -eq 'refresh_users_list' }).Count -eq 1) "$($engine.Name)/$($scenario.Name) did not refresh the Tautulli roster exactly once."
                 Assert-True ($apiCommands.Count -gt 0 -and $apiCommands[0] -eq 'refresh_users_list') "$($engine.Name)/$($scenario.Name) did not refresh before reading production data."
+                $reservedUserCalls = @($tautulliCalls | Where-Object {
+                    $null -ne $_.query.PSObject.Properties['user_id'] -and [string]$_.query.user_id -match '^0+$'
+                })
+                Assert-True ($reservedUserCalls.Count -eq 0) "$($engine.Name)/$($scenario.Name) looked up or personalized data for reserved Local user zero."
+                if ($scenario.FreshAccessState) {
+                    $savedAccessState = Get-Content -LiteralPath $accessStatePath -Raw -Encoding UTF8 | ConvertFrom-Json
+                    Assert-True ($null -eq $savedAccessState.Users.PSObject.Properties['0']) "$($engine.Name)/$($scenario.Name) added Local to its fresh welcome/access baseline."
+                }
                 if ($scenario.Name -eq 'stale-manager-discovery-new-user') {
                     $refreshIndex = [Array]::IndexOf([object[]]$apiCommands, 'refresh_users_list')
                     $rosterIndex = [Array]::IndexOf([object[]]$apiCommands, 'get_users')
@@ -644,6 +655,14 @@ foreach ($engine in $engines) {
 					$cacheOutput = Get-Content -LiteralPath $cacheStdout -Raw -Encoding UTF8
 					$cacheResult = Get-Content -LiteralPath $cacheResultPath -Raw -Encoding UTF8
 					Assert-True ($cacheOutput.Contains('Eligible users checked: 3')) "$($engine.Name) CacheWarm did not treat mapped users as eligible."
+					Assert-True (-not $cacheResult.Contains('legacy-reserved@example.com')) "$($engine.Name) exposed the reserved Local fallback address in a CacheWarm result."
+					$postManagedCalls = @(
+						Get-Content -LiteralPath $tautulliLog -ErrorAction SilentlyContinue |
+							Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+							Select-Object -Skip $callBaseline |
+							ForEach-Object { $_ | ConvertFrom-Json }
+					)
+					Assert-True (@($postManagedCalls | Where-Object { $null -ne $_.query.PSObject.Properties['user_id'] -and [string]$_.query.user_id -match '^0+$' }).Count -eq 0) "$($engine.Name) included reserved Local in recipient cache, test, or welcome lookups."
 					Assert-True (-not $cacheResult.Contains('shared-managed@example.com')) "$($engine.Name) exposed the mapped address in a CacheWarm result."
 					$managedCalls = @(
 						Get-Content -LiteralPath $smtpLog -ErrorAction SilentlyContinue |

@@ -6,6 +6,13 @@ the structure of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.26.1] - 2026-09-09
+
+### Fixed
+
+- Exclude Tautulli's reserved Local user ID `0` from newsletter discovery, delivery-address prompts, recipient selection, personalized generation, welcome tracking, and deleted-item cache recipient coverage. A saved fallback address cannot make the anonymous identity eligible; real users named Local with a nonzero ID remain supported.
+- Validate that individual Tautulli user lookups return the requested identity. If Tautulli substitutes its Local fallback or another user, resolve only an exact matching bulk-roster entry or fail closed without generating or sending that user's newsletter.
+
 ## [0.26.0] - 2026-09-09
 
 ### Added
