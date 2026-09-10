@@ -680,11 +680,14 @@ foreach ($engine in $engines) {
 						$managedResult = Get-Content -LiteralPath $resultFile -Raw -Encoding UTF8
 						Assert-True (-not $managedResult.Contains('shared-managed@example.com')) "$($engine.Name) exposed the mapped address in a renderer result."
 					}
-				}
+                }
                 if ($scenario.Name -eq 'managed-fallback-exclusion-precedence') {
-                    $blockedWelcomeResultPath = Join-Path $tempRoot ("result-managed-blocked-welcome-$($engine.Name).json")
-                    $blockedWelcomeStdout = Join-Path $tempRoot ("renderer-managed-blocked-welcome-$($engine.Name).stdout.txt")
-                    $blockedWelcomeStderr = Join-Path $tempRoot ("renderer-managed-blocked-welcome-$($engine.Name).stderr.txt")
+                    $blockedSampleCases = @(
+                        [PSCustomObject]@{ Mode = 'Preview'; UserId = '10'; DeliveryScope = 'none' },
+                        [PSCustomObject]@{ Mode = 'SendTest'; UserId = '10'; DeliveryScope = 'test' },
+                        [PSCustomObject]@{ Mode = 'PreviewAll'; UserId = '11'; DeliveryScope = 'none' },
+                        [PSCustomObject]@{ Mode = 'SendTestAll'; UserId = '11'; DeliveryScope = 'test' }
+                    )
                     $oldBlockedDataRoot = $env:TAUTWEEKLY_DATA_DIR
                     $oldBlockedConfig = $env:TAUTWEEKLY_CONFIG
                     try {
@@ -692,22 +695,87 @@ foreach ($engine in $engines) {
                             $env:TAUTWEEKLY_DATA_DIR = $dataRoot
                             $env:TAUTWEEKLY_CONFIG = $configPath
                         }
+
+                        foreach ($blockedSampleCase in $blockedSampleCases) {
+                            $blockedName = ([string]$blockedSampleCase.Mode).ToLowerInvariant()
+                            $blockedResultPath = Join-Path $tempRoot ("result-managed-blocked-$blockedName-$($engine.Name).json")
+                            $blockedStdout = Join-Path $tempRoot ("renderer-managed-blocked-$blockedName-$($engine.Name).stdout.txt")
+                            $blockedStderr = Join-Path $tempRoot ("renderer-managed-blocked-$blockedName-$($engine.Name).stderr.txt")
+                            $blockedProcess = Start-Process -FilePath $engine.Host -ArgumentList @(
+                                '-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $headlessRunner,
+                                '-RendererPath', (Join-Path $appRoot 'TautWeekly.ps1'), '-ConfigPath', $configPath,
+                                '-UserId', $blockedSampleCase.UserId, '-Mode', $blockedSampleCase.Mode,
+                                '-ResultPath', $blockedResultPath
+                            ) -Wait -PassThru @processWindowArgs -RedirectStandardOutput $blockedStdout -RedirectStandardError $blockedStderr
+                            Assert-True ($blockedProcess.ExitCode -eq 1) "$($engine.Name) $($blockedSampleCase.Mode) exclusion exited $($blockedProcess.ExitCode), expected 1."
+                            Assert-True (Test-Path -LiteralPath $blockedResultPath) "$($engine.Name) $($blockedSampleCase.Mode) exclusion omitted its structured result."
+                            $blockedResultRaw = Get-Content -LiteralPath $blockedResultPath -Raw -Encoding UTF8
+                            $blockedResult = $blockedResultRaw | ConvertFrom-Json
+                            Assert-True ($blockedResult.outcome -ceq 'failed' -and $blockedResult.errorCategory -ceq 'user-excluded') "$($engine.Name) $($blockedSampleCase.Mode) did not report the sanitized user-excluded category."
+                            Assert-True ($blockedResult.deliveryScope -ceq $blockedSampleCase.DeliveryScope) "$($engine.Name) $($blockedSampleCase.Mode) reported the wrong delivery scope."
+                            Assert-True ($blockedResult.smtpAcceptedCount -eq 0 -and $blockedResult.skippedCount -eq 0 -and $blockedResult.failedCount -eq 0) "$($engine.Name) $($blockedSampleCase.Mode) reported delivery activity for an excluded user."
+                            Assert-True (@($blockedResult.generatedPreviewFiles).Count -eq 0) "$($engine.Name) $($blockedSampleCase.Mode) generated preview files for an excluded user."
+                            Assert-True (-not $blockedResultRaw.Contains('blocked-managed@example.com')) "$($engine.Name) $($blockedSampleCase.Mode) exposed an excluded effective address."
+                        }
+
+                        $blockedWelcomeResultPath = Join-Path $tempRoot ("result-managed-blocked-welcome-$($engine.Name).json")
+                        $blockedWelcomeStdout = Join-Path $tempRoot ("renderer-managed-blocked-welcome-$($engine.Name).stdout.txt")
+                        $blockedWelcomeStderr = Join-Path $tempRoot ("renderer-managed-blocked-welcome-$($engine.Name).stderr.txt")
                         $blockedWelcome = Start-Process -FilePath $engine.Host -ArgumentList @(
                             '-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $appRoot 'TautWeekly.ps1'),
                             '-ConfigPath', $configPath, '-UserId', '11', '-Mode', 'SendWelcome',
                             '-ConfirmWelcome', '-ResultPath', $blockedWelcomeResultPath
                         ) -Wait -PassThru @processWindowArgs -RedirectStandardOutput $blockedWelcomeStdout -RedirectStandardError $blockedWelcomeStderr
+
+                        $excludedSmtpCalls = @(
+                            Get-Content -LiteralPath $smtpLog -ErrorAction SilentlyContinue |
+                                Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+                        )
+                        Assert-True ($excludedSmtpCalls.Count -eq 0) "$($engine.Name) contacted SMTP for an excluded user in a preview, TestEmail, or welcome mode."
+
+                        $allowedPreviewResultPath = Join-Path $tempRoot ("result-managed-included-preview-$($engine.Name).json")
+                        $allowedPreviewStdout = Join-Path $tempRoot ("renderer-managed-included-preview-$($engine.Name).stdout.txt")
+                        $allowedPreviewStderr = Join-Path $tempRoot ("renderer-managed-included-preview-$($engine.Name).stderr.txt")
+                        $allowedPreview = Start-Process -FilePath $engine.Host -ArgumentList @(
+                            '-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $headlessRunner,
+                            '-RendererPath', (Join-Path $appRoot 'TautWeekly.ps1'), '-ConfigPath', $configPath,
+                            '-UserId', '12', '-Mode', 'Preview', '-ResultPath', $allowedPreviewResultPath
+                        ) -Wait -PassThru @processWindowArgs -RedirectStandardOutput $allowedPreviewStdout -RedirectStandardError $allowedPreviewStderr
+
+                        $allowedTestResultPath = Join-Path $tempRoot ("result-managed-included-test-$($engine.Name).json")
+                        $allowedTestStdout = Join-Path $tempRoot ("renderer-managed-included-test-$($engine.Name).stdout.txt")
+                        $allowedTestStderr = Join-Path $tempRoot ("renderer-managed-included-test-$($engine.Name).stderr.txt")
+                        $allowedTest = Start-Process -FilePath $engine.Host -ArgumentList @(
+                            '-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $headlessRunner,
+                            '-RendererPath', (Join-Path $appRoot 'TautWeekly.ps1'), '-ConfigPath', $configPath,
+                            '-UserId', '12', '-Mode', 'SendTest', '-ResultPath', $allowedTestResultPath
+                        ) -Wait -PassThru @processWindowArgs -RedirectStandardOutput $allowedTestStdout -RedirectStandardError $allowedTestStderr
                     }
                     finally {
                         $env:TAUTWEEKLY_DATA_DIR = $oldBlockedDataRoot
                         $env:TAUTWEEKLY_CONFIG = $oldBlockedConfig
                     }
                     Assert-True ($blockedWelcome.ExitCode -ne 0) "$($engine.Name) SendWelcome bypassed ExcludedEmails for a managed-user effective address."
+                    $blockedWelcomeResultRaw = Get-Content -LiteralPath $blockedWelcomeResultPath -Raw -Encoding UTF8
+                    $blockedWelcomeResult = $blockedWelcomeResultRaw | ConvertFrom-Json
+                    Assert-True ($blockedWelcomeResult.errorCategory -ceq 'user-excluded') "$($engine.Name) SendWelcome did not report the sanitized user-excluded category."
                     $blockedCalls = @(
                         Get-Content -LiteralPath $smtpLog -ErrorAction SilentlyContinue |
                             Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
                     )
-                    Assert-True ($blockedCalls.Count -eq 0) "$($engine.Name) SendWelcome contacted SMTP for an excluded managed-user effective address."
+                    Assert-True ($allowedPreview.ExitCode -eq 0) "$($engine.Name) Preview incorrectly required a production address for an included managed user."
+                    Assert-True ($allowedTest.ExitCode -eq 0) "$($engine.Name) SendTest incorrectly required a production address for an included managed user."
+                    $allowedPreviewResult = Get-Content -LiteralPath $allowedPreviewResultPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                    $allowedTestResult = Get-Content -LiteralPath $allowedTestResultPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                    Assert-True ($allowedPreviewResult.outcome -ceq 'succeeded' -and @($allowedPreviewResult.generatedPreviewFiles).Count -eq 1) "$($engine.Name) Preview did not generate exactly one included-user sample."
+                    Assert-True ($allowedTestResult.outcome -ceq 'succeeded' -and $allowedTestResult.smtpAcceptedCount -eq 1) "$($engine.Name) SendTest did not send exactly one included-user sample."
+                    $allowedRecipients = @(
+                        $blockedCalls |
+                            ForEach-Object { $_ | ConvertFrom-Json } |
+                            Where-Object { [string]$_.command -match '^RCPT TO:<([^>]+)>$' } |
+                            ForEach-Object { [regex]::Match([string]$_.command, '^RCPT TO:<([^>]+)>$').Groups[1].Value }
+                    )
+                    Assert-True (($allowedRecipients -join ',') -ceq 'test@example.com') "$($engine.Name) included-user SendTest did not remain isolated to TestEmail: $($allowedRecipients -join ',')."
                 }
                 if ($scenario.Name -eq 'auth-failure-stops-batch') {
                     $testAllResultPath = Join-Path $tempRoot ("result-test-all-auth-failure-$($engine.Name).json")

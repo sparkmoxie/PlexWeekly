@@ -306,6 +306,25 @@ func TestRendererResultAcceptsOnlyAllowlistedFailureCategories(t *testing.T) {
 	if !validRendererResult(legacy, "PreviewAll") {
 		t.Fatalf("legacy category-free failure was rejected: %+v", legacy)
 	}
+
+	for _, mode := range []struct {
+		name          string
+		deliveryScope string
+	}{
+		{name: "Preview", deliveryScope: "none"},
+		{name: "PreviewAll", deliveryScope: "none"},
+		{name: "SendTest", deliveryScope: "test"},
+		{name: "SendTestAll", deliveryScope: "test"},
+		{name: "SendWelcome", deliveryScope: "welcome"},
+	} {
+		result := failed
+		result.Mode = mode.name
+		result.DeliveryScope = mode.deliveryScope
+		result.ErrorCategory = "user-excluded"
+		if !validRendererResult(result, mode.name) {
+			t.Fatalf("valid %s user-excluded result was rejected: %+v", mode.name, result)
+		}
+	}
 }
 
 func validPreviewAllRendererResult() rendererResult {

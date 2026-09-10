@@ -228,8 +228,8 @@ function Read-TautWeeklyExcludedUserIds {
 
     Write-Host ''
     Write-Host 'Newsletter user exclusions' -ForegroundColor Cyan
-    Write-Host 'Excluded users never receive scheduled or manual SendAll newsletters.'
-    Write-Host 'Preview and TestEmail commands can still use an excluded user as sample data.'
+    Write-Host 'Saved exclusions block personalized preview, TestEmail, welcome, and SendAll modes.'
+    Write-Host 'Included users without a production address can still be previewed or tested safely.'
     Write-Host ''
     Write-Host ('{0,-4} {1,-10} {2,-9} {3,-24} {4,-20} {5}' -f '#', 'Status', 'Delivery', 'Friendly name', 'User ID', 'Email')
     Write-Host ('{0,-4} {1,-10} {2,-9} {3,-24} {4,-20} {5}' -f '--', '----------', '---------', '------------------------', '--------------------', '-----')

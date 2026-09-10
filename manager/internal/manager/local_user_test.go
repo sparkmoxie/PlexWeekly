@@ -30,7 +30,7 @@ func TestDiscoveryExcludesReservedLocalAcrossRosterSources(t *testing.T) {
 	if len(merged) != 2 {
 		t.Fatalf("reserved identities survived table merge: %#v", merged)
 	}
-	users, matched := normalizeDiscoveredUsers(names, merged, map[string]struct{}{"anonymous@example.org": {}})
+	users, matched := normalizeDiscoveredUsers(names, merged, map[string]struct{}{"anonymous@example.org": {}}, nil)
 	if len(users) != 2 || users[0].ID != "42" || users[0].Name != "Local" || !users[0].NeedsDeliveryAddress || users[1].ID != "43" || matched != 0 {
 		t.Fatalf("unexpected recipient discovery: %#v matched=%d", users, matched)
 	}

@@ -562,10 +562,13 @@ Production eligibility uses one fixed precedence: inactive or deleted account,
 fallback), missing effective address, then `ExcludedEmails` against that
 effective address. An override never replaces or reroutes a native email.
 `SendAll`, the separately confirmed one-off welcome, and cache coverage use the
-same effective recipient; Preview and every TestEmail mode remain isolated to
-the selected sample user and configured `TestEmail`. Removing a mapping does
-not alter welcome/history state and returns an otherwise eligible native-blank
-user to `missingEmail` until another address is assigned.
+same effective recipient. Every personalized mode enforces the saved stable-ID
+and effective-address exclusions before generation or SMTP. Preview and every
+TestEmail mode may still sample an included user who lacks a production
+address, and test delivery remains isolated to the configured `TestEmail`.
+Removing a mapping does not alter welcome/history state and returns an
+otherwise eligible native-blank user to `missingEmail` until another address
+is assigned.
 
 An individual user lookup must identify the exact requested user. If Tautulli
 returns its Local fallback or a different user, TautWeekly tries an exact
@@ -593,9 +596,11 @@ Normally revise exclusions in Manager Config. Recovery/expert fallbacks are
 `./tautweekly.sh exclude-users` on either Docker edition, and
 `sudo tautweekly exclude-users` on Linux or FreeBSD. The standalone command
 does not change `ExcludedEmails`, `UserEmailOverrides`, SMTP values, or
-scheduling. Both exclusion lists affect scheduled and confirmed SendAll plus
-the separately confirmed one-off welcome. Preview and TestEmail modes remain
-available for rendering checks.
+scheduling. Both exclusion lists affect Preview, PreviewAll, TestEmail,
+TestEmail All, scheduled or confirmed SendAll, and the separately confirmed
+one-off welcome. Manager operation selectors use the last successfully saved
+policy; excluded users remain visible in Config so they can be included and
+saved again.
 
 ## Scheduling
 

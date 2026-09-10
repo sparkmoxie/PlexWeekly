@@ -64,8 +64,8 @@ func TestEveryConfigFieldHasExplicitSaveImpact(t *testing.T) {
 		"CustomTextCardBody":            {category: "custom-text-card", preview: true},
 		"IncludedLibraryIds":            {category: "libraries", preview: true, warmCache: true},
 		"ExcludedUserIds":               {category: "recipients", preview: true, warmCache: true},
-		"UserEmailOverrides":            {category: "recipients", preview: true, warmCache: true},
-		"ExcludedEmails":                {category: "recipients", preview: true, warmCache: true},
+		"UserEmailOverrides":            {category: "recipients", discovery: true, preview: true, warmCache: true},
+		"ExcludedEmails":                {category: "recipients", discovery: true, preview: true, warmCache: true},
 	}
 
 	definitions := configDefinitions()
@@ -135,7 +135,7 @@ func TestConfigPostSavePlanInvalidatesOnlyAffectedCategories(t *testing.T) {
 			mutate: func(request *ConfigSaveRequest) {
 				request.Values["UserEmailOverrides"] = json.RawMessage(`{"42":"managed@example.org"}`)
 			},
-			want: ConfigPostSavePlan{MaterialChange: true, GeneratePreviews: true, WarmCache: true},
+			want: ConfigPostSavePlan{MaterialChange: true, RunDiscovery: true, GeneratePreviews: true, WarmCache: true},
 		},
 		{
 			name: "identity presentation",

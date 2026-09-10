@@ -159,6 +159,15 @@ one-user `SendWelcome` mode or the full `SendAll` mode, requires its own explici
 confirmation, cannot be cancelled, and reports SMTP acceptance separately from
 inbox delivery. The selected welcome user ID is passed only to the private
 renderer process and is not retained in Manager operation history.
+Preview, TestEmail, and Manual Welcome selectors contain only users included by
+the last successfully saved `ExcludedUserIds` and effective-address
+`ExcludedEmails` policy. Excluded users remain visible in Config so the policy
+can be revised. Unsaved checkbox edits do not change the operation boundary;
+the browser clears newly unavailable selections after save or discovery, the
+backend checks the exact saved revision and sanitized discovery, and the
+renderer enforces the policy again before personalized generation or SMTP.
+Included managed users without a production address remain valid preview and
+TestEmail samples, while every test message still goes only to `TestEmail`.
 Each manual or scheduled `SendAll` uses that same guarded renderer path to run
 one bounded Tautulli/Plex user-list refresh before reading the live roster.
 Manager discovery cache is not a recipient source. An unconfirmed refresh stops

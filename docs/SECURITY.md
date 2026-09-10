@@ -212,8 +212,11 @@ contain it. Sanitized discovery and its retained cache expose only whether an
 active native-email-blank user needs an address; config summaries, operation
 results, diagnostics, and shareable cache reports omit the map and addresses.
 Production uses a fallback only when Tautulli has no native email and evaluates
-the effective address against the existing exclusion policy. TestEmail modes
-never use the fallback map.
+the effective address against the existing exclusion policy. Every
+personalized preview, TestEmail, welcome, and production mode enforces that
+saved policy. TestEmail modes may inspect the effective address only to apply
+`ExcludedEmails`; they never deliver to it and still send solely to the
+configured `TestEmail`.
 
 The reserved Tautulli Local identity (user ID `0`) is never a newsletter
 recipient, even if private configuration contains a fallback address for it.

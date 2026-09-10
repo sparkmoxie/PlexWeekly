@@ -232,10 +232,12 @@ func New(options Options) (*Server, error) {
 		cacheVerificationMu.Unlock()
 		_ = configuration.StoreCache(revision, cache)
 	}
+	discovery := newTautulliDiscoveryStore(options.DataDir)
 	operations, err := newOperationCoordinator(options)
 	if err != nil {
 		return nil, err
 	}
+	operations.discovery = discovery
 	schedule, err := newScheduleCoordinator(options)
 	if err != nil {
 		return nil, err
@@ -255,7 +257,7 @@ func New(options Options) (*Server, error) {
 		auth:                store,
 		authLimiter:         newAttemptLimiter(options.Now),
 		diagnostics:         newDiagnosticStore(options.DataDir, options.Now),
-		discovery:           newTautulliDiscoveryStore(options.DataDir),
+		discovery:           discovery,
 		cacheVerificationMu: cacheVerificationMu,
 		configuration:       configuration,
 		operations:          operations,
@@ -1407,6 +1409,12 @@ func (s *Server) handleCreateOperation(w http.ResponseWriter, r *http.Request) {
 			s.updateConfigurationStep(request.ExpectedRevision, "cache", "failed", "Configuration is incomplete, so deleted-item cache refresh could not start.")
 		}
 		writeAPIError(w, http.StatusConflict, "operation-not-ready", "Complete and save configuration before starting this operation.")
+		return
+	case errors.Is(err, ErrOperationUserExcluded):
+		if request.Type == "preview-all" {
+			s.updateConfigurationStep(request.ExpectedRevision, "previews", "skipped", "The selected user is excluded by the saved recipient policy. Include and save that user before generating previews.")
+		}
+		writeAPIError(w, http.StatusUnprocessableEntity, "operation-user-excluded", "The selected user is excluded by the saved recipient policy. Uncheck the exclusion and save before previewing, testing, or sending to that user.")
 		return
 	case errors.Is(err, ErrOperationBusy):
 		if request.Type == "preview-all" {

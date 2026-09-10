@@ -252,8 +252,10 @@ sudo tautweekly update                verify package, install adapter, update im
 ```
 
 The wrapper always requires an explicit confirmation for real welcome or
-production delivery. Excluded users remain available to preview and TestEmail
-modes but are omitted from scheduled and confirmed `SendAll` delivery.
+production delivery. Saved exclusions block the user from preview, TestEmail,
+welcome, and scheduled or confirmed `SendAll` modes. An included user without
+a production address can still be sampled; TestEmail sends only to its
+configured test inbox.
 
 Manager's **Repeat this Tautulli lookup** updates only its displayed choices.
 Every manual or scheduled SendAll performs one bounded Tautulli/Plex user-list
