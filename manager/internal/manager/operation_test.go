@@ -617,6 +617,72 @@ func TestSendWelcomeOperationRequiresSelectedUserAndProductionConfirmation(t *te
 	}
 }
 
+func TestUserScopedOperationsRejectSavedExclusionsBeforeRunnerStart(t *testing.T) {
+	root := integrationConfigRoot(t, "http://127.0.0.1:8181", "fictional-api-key", "", "")
+	setIntegrationConfigValues(t, root, map[string]any{
+		"ExcludedUserIds":    []string{"42"},
+		"ExcludedEmails":     []string{"blocked@example.org"},
+		"UserEmailOverrides": map[string]string{"43": "BLOCKED@example.org"},
+	})
+	view := ReadConfigEditor(root)
+	for _, test := range []struct {
+		operationType string
+		userID        string
+	}{
+		{operationType: "preview-all", userID: "42"},
+		{operationType: "send-test-all", userID: "42"},
+		{operationType: "send-welcome", userID: "42"},
+		{operationType: "preview-all", userID: "43"},
+	} {
+		t.Run(test.operationType+"-"+test.userID, func(t *testing.T) {
+			runner := &fixturePreviewRunner{}
+			coordinator, err := newOperationCoordinator(Options{DataDir: t.TempDir(), TautWeeklyRoot: root, Now: time.Now, operationRunner: runner})
+			if err != nil {
+				t.Fatal(err)
+			}
+			request := CreateOperationRequest{Type: test.operationType, ExpectedRevision: view.Revision, UserID: test.userID}
+			request.ConfirmNoSend = test.operationType == "preview-all"
+			request.ConfirmTestSend = test.operationType == "send-test-all"
+			request.ConfirmProductionSend = test.operationType == "send-welcome"
+			if _, err := coordinator.Start(request); !errors.Is(err, ErrOperationUserExcluded) {
+				t.Fatalf("saved exclusion was not rejected: %v", err)
+			}
+			if coordinator.Current() != nil {
+				t.Fatal("excluded operation created durable state")
+			}
+		})
+	}
+}
+
+func TestUserScopedOperationsRejectCurrentDiscoveryLegacyExclusions(t *testing.T) {
+	root := integrationConfigRoot(t, "http://127.0.0.1:8181", "fictional-api-key", "", "")
+	data := t.TempDir()
+	view := ReadConfigEditor(root)
+	discovery := newTautulliDiscoveryStore(data)
+	if err := discovery.Save(TautulliDiscoveryResult{
+		Mode:            "real-lan-discovery",
+		NetworkBoundary: "private-and-loopback-only",
+		CompletedAtUTC:  time.Now().UTC().Format(time.RFC3339),
+		ConfigRevision:  view.Revision,
+		Libraries:       []DiscoveredLibrary{{ID: "1", Name: "Synthetic Movies", MediaType: "movie"}},
+		Users:           []DiscoveredUser{{ID: "44", Name: "Synthetic Viewer", Eligibility: "eligible", LegacyRuleExcluded: true}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	coordinator, err := newOperationCoordinator(Options{DataDir: data, TautWeeklyRoot: root, Now: time.Now, operationRunner: &fixturePreviewRunner{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	coordinator.discovery = discovery
+	request := CreateOperationRequest{Type: "preview-all", ExpectedRevision: view.Revision, UserID: "44", ConfirmNoSend: true}
+	if _, err := coordinator.Start(request); !errors.Is(err, ErrOperationUserExcluded) {
+		t.Fatalf("current discovery legacy exclusion was not rejected: %v", err)
+	}
+	if coordinator.Current() != nil {
+		t.Fatal("legacy-excluded operation created durable state")
+	}
+}
+
 func TestSendAllOperationRetainsStructuredPartialDeliveryEvidence(t *testing.T) {
 	root := integrationConfigRoot(t, "http://127.0.0.1:8181", "fictional-api-key", "", "")
 	runner := &fixturePreviewRunner{sendAllPartial: true}

@@ -236,7 +236,8 @@ func DiscoverTautulliChoices(ctx context.Context, root string, request TautulliD
 	var rawUsers []map[string]any
 	detailErr := tautulliCommand(checkContext, client, base, apiKey, "get_users", &rawUsers)
 	legacyRules := normalizedLegacyExclusionRules(values["ExcludedEmails"])
-	users, matchedLegacyRules := normalizeDiscoveredUsers(rawNames, rawUsers, legacyRules)
+	emailOverrides := normalizedDiscoveryUserEmailOverrides(values["UserEmailOverrides"])
+	users, matchedLegacyRules := normalizeDiscoveredUsers(rawNames, rawUsers, legacyRules, emailOverrides)
 	// A successful roster containing only Local is valid but has no recipients.
 	hasReservedRosterEntry := nameErr == nil && hasReservedDiscoveredUser(rawNames) || detailErr == nil && hasReservedDiscoveredUser(rawUsers)
 	var tableErr error
@@ -246,7 +247,7 @@ func DiscoverTautulliChoices(ctx context.Context, root string, request TautulliD
 		if tableErr == nil {
 			hasReservedRosterEntry = hasReservedRosterEntry || hasReservedDiscoveredUser(table.Data)
 			rawUsers = mergeDiscoveredUserDetails(rawUsers, table.Data)
-			users, matchedLegacyRules = normalizeDiscoveredUsers(rawNames, rawUsers, legacyRules)
+			users, matchedLegacyRules = normalizeDiscoveredUsers(rawNames, rawUsers, legacyRules, emailOverrides)
 		}
 	}
 	if len(users) == 0 && !hasReservedRosterEntry {
@@ -314,7 +315,7 @@ func normalizeDiscoveredLibraries(values []map[string]any) []DiscoveredLibrary {
 	return result
 }
 
-func normalizeDiscoveredUsers(names, details []map[string]any, legacyRules map[string]struct{}) ([]DiscoveredUser, int) {
+func normalizeDiscoveredUsers(names, details []map[string]any, legacyRules map[string]struct{}, emailOverrides map[string]string) ([]DiscoveredUser, int) {
 	detailsByID := make(map[string]map[string]any)
 	nameByID := make(map[string]string)
 	ids := make([]string, 0, len(names)+len(details))
@@ -362,18 +363,22 @@ func normalizeDiscoveredUsers(names, details []map[string]any, legacyRules map[s
 		legacyRuleExcluded := false
 		if hasDetails {
 			eligibility = "skipped"
-			email := discoveredUserEmail(detail)
+			nativeEmail := discoveredUserEmail(detail)
 			if integrationTruthy(detail["is_active"]) {
-				if email != "" && email != "<nil>" {
+				if nativeEmail != "" && nativeEmail != "<nil>" {
 					eligibility = "eligible"
 				} else {
 					eligibility = "address-needed"
 					needsDeliveryAddress = true
 				}
 			}
-			if _, excluded := legacyRules[email]; excluded {
+			effectiveEmail := nativeEmail
+			if effectiveEmail == "" || effectiveEmail == "<nil>" {
+				effectiveEmail = strings.ToLower(strings.TrimSpace(emailOverrides[id]))
+			}
+			if _, excluded := legacyRules[effectiveEmail]; excluded {
 				legacyRuleExcluded = true
-				matchedLegacyRules[email] = struct{}{}
+				matchedLegacyRules[effectiveEmail] = struct{}{}
 			}
 		}
 		result = append(result, DiscoveredUser{ID: id, Name: name, Eligibility: eligibility, NeedsDeliveryAddress: needsDeliveryAddress, Role: discoveredUserRole(detail), LegacyRuleExcluded: legacyRuleExcluded})
@@ -469,6 +474,31 @@ func normalizedLegacyExclusionRules(value any) map[string]struct{} {
 	return result
 }
 
+func normalizedDiscoveryUserEmailOverrides(value any) map[string]string {
+	result := make(map[string]string)
+	appendOverride := func(id string, candidate any) {
+		address, ok := candidate.(string)
+		if !ok {
+			return
+		}
+		address = strings.ToLower(strings.TrimSpace(address))
+		if validTautulliUserID(id) && address != "" {
+			result[id] = address
+		}
+	}
+	switch typed := value.(type) {
+	case map[string]any:
+		for id, candidate := range typed {
+			appendOverride(strings.TrimSpace(id), candidate)
+		}
+	case map[string]string:
+		for id, candidate := range typed {
+			appendOverride(strings.TrimSpace(id), candidate)
+		}
+	}
+	return result
+}
+
 func discoveredUserRole(detail map[string]any) string {
 	for _, key := range []string{"is_owner", "is_plex_owner", "is_server_owner"} {
 		if integrationTruthy(detail[key]) {
@@ -487,7 +517,7 @@ func suggestedPreviewUserID(users []DiscoveredUser) string {
 	owners := []string{}
 	administrators := []string{}
 	for _, user := range users {
-		if !validTautulliUserID(user.ID) {
+		if !validTautulliUserID(user.ID) || user.LegacyRuleExcluded {
 			continue
 		}
 		switch user.Role {

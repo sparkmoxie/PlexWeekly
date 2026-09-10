@@ -9390,13 +9390,24 @@ function Get-UserSkipReason {
     if (Test-TautulliLocalUserId -Id ([string]$User.UserId)) { return "excludedUserId" }
     if ($User.DeletedUser -gt 0 -or $User.IsActive -eq 0) { return "inactiveOrDeleted" }
 
+    $exclusionReason = Get-UserExclusionReason -User $User
+    if (-not [string]::IsNullOrWhiteSpace($exclusionReason)) { return $exclusionReason }
+
+    if ([string]::IsNullOrWhiteSpace([string]$User.DeliveryEmail)) { return "missingEmail" }
+
+    return ""
+}
+
+function Get-UserExclusionReason {
+    param([object]$User)
+
+    if (Test-TautulliLocalUserId -Id ([string]$User.UserId)) { return "excludedUserId" }
+
     if ($null -ne $Config.PSObject.Properties["ExcludedUserIds"]) {
         foreach ($id in @($Config.ExcludedUserIds)) {
             if ([string]$id -eq [string]$User.UserId) { return "excludedUserId" }
         }
     }
-
-    if ([string]::IsNullOrWhiteSpace([string]$User.DeliveryEmail)) { return "missingEmail" }
 
     if ($null -ne $Config.PSObject.Properties["ExcludedEmails"]) {
         foreach ($email in @($Config.ExcludedEmails)) {
@@ -9474,6 +9485,7 @@ if ($Mode -eq "ListUsers") {
     foreach ($n in $names) {
         try {
             $u = Get-NewsletterUser -Id ([string]$n.user_id)
+            if (-not [string]::IsNullOrWhiteSpace((Get-UserExclusionReason -User $u))) { continue }
             $rows.Add([PSCustomObject]@{
                 UserId       = $u.UserId
                 Username     = $u.Username
@@ -9491,7 +9503,7 @@ if ($Mode -eq "ListUsers") {
     $rows | Sort-Object FriendlyName | Format-Table -AutoSize
     Write-Host ""
     Write-Host "TautulliNotify is legacy notification-agent state and does not control TautWeekly delivery." -ForegroundColor DarkGray
-    Write-Host "ListUsers only displays the roster; it does not select or save a default user." -ForegroundColor Yellow
+    Write-Host "ListUsers displays only users included by the saved recipient policy; it does not select or save a default user." -ForegroundColor Yellow
     Write-Host "Pass a numeric UserId from this table to Preview, PreviewAll, SendTest, SendTestAll, or SendWelcome."
     Write-TautWeeklyStructuredResult -Outcome "succeeded"
     exit 0
@@ -9514,6 +9526,7 @@ if ($Mode -eq "SendWelcome") {
     $user = Get-NewsletterUser -Id $resolvedUserId
     $welcomeSkipReason = Get-UserSkipReason -User $user
     if (-not [string]::IsNullOrWhiteSpace($welcomeSkipReason)) {
+        if ($welcomeSkipReason -in @("excludedUserId", "excludedEmail")) { $script:TautWeeklyResultErrorCategory = "user-excluded" }
         throw "This user is not eligible for welcome delivery: $welcomeSkipReason."
     }
     $recipientPlatform = Get-NewsletterLastPlatform -ExpectedUserId $user.UserId
@@ -9792,6 +9805,11 @@ function Build-ForUser {
     $script:TautWeeklyResultErrorCategory = "tautulli-unavailable"
     $resolvedUserId = Resolve-TautulliUserId -Identifier $Id
     $user = Get-NewsletterUser -Id $resolvedUserId
+    $exclusionReason = Get-UserExclusionReason -User $user
+    if (-not [string]::IsNullOrWhiteSpace($exclusionReason)) {
+        $script:TautWeeklyResultErrorCategory = "user-excluded"
+        throw "The selected user is excluded by saved recipient policy. Include and save that user before previewing or sending a test."
+    }
     $recentAccess = Test-UserNeedsWelcome -State $accessState -UserId $user.UserId
 
     Write-Log "Loading history for $($user.FriendlyName) ($($user.UserId)); recent access: $recentAccess..."
@@ -9903,6 +9921,11 @@ function Build-AllEmailVariants {
     $script:TautWeeklyResultErrorCategory = "tautulli-unavailable"
     $resolvedUserId = Resolve-TautulliUserId -Identifier $Id
     $user = Get-NewsletterUser -Id $resolvedUserId
+    $exclusionReason = Get-UserExclusionReason -User $user
+    if (-not [string]::IsNullOrWhiteSpace($exclusionReason)) {
+        $script:TautWeeklyResultErrorCategory = "user-excluded"
+        throw "The selected user is excluded by saved recipient policy. Include and save that user before previewing or sending a test."
+    }
 
     Write-Log "Loading real history for six-state email regression: $($user.FriendlyName)..."
     $recipientWatchedMovies = Get-RecipientWatchedMovies -ExpectedUserId $user.UserId

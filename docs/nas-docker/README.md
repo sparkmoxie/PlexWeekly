@@ -366,10 +366,12 @@ Apps users can invoke the equivalent fallback from the container Console:
 ```
 
 The command changes only `ExcludedUserIds`; manually maintained
-`ExcludedEmails` entries are preserved. Excluded users are skipped by the
-scheduler, SendAll, and the separately confirmed one-off welcome. Preview and
-TestEmail modes remain explicit administrator tools. Treat the displayed names,
-native emails, and fallback addresses as private recipient data.
+`ExcludedEmails` entries are preserved. Saved exclusions block a user from
+Preview, PreviewAll, TestEmail, TestEmail All, Manual Welcome, the scheduler,
+and SendAll. Included users without a production address remain valid preview
+and TestEmail samples, and test delivery still goes only to `TestEmail`. Treat
+the displayed names, native emails, and fallback addresses as private
+recipient data.
 
 In Manager Config and the terminal fallback, checked/selected rows mean
 **excluded**, not selected for delivery. Unchecked active users with a native

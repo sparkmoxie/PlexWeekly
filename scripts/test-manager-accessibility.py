@@ -275,7 +275,7 @@ def main() -> int:
         failures.append("Dashboard has no last-observed time greeting")
     if "minuteOfDay >= 360 && minuteOfDay <= 720" not in javascript or "minuteOfDay >= 721 && minuteOfDay <= 1080" not in javascript:
         failures.append("Dashboard greeting does not implement the requested morning and afternoon boundaries")
-    if 'suggestedPreviewUserId' not in javascript or 'name ? `${greeting}, ${name}.` : `${greeting}.`' not in javascript:
+    if 'suggestedSelectablePreviewUserID()' not in javascript or 'name ? `${greeting}, ${name}.` : `${greeting}.`' not in javascript:
         failures.append("Dashboard greeting lacks the unambiguous administrator-name fallback")
     if 'id="access-status-button"' not in combined or 'addEventListener("click", openAccessSettings)' not in javascript:
         failures.append("access lock status does not route to password settings")

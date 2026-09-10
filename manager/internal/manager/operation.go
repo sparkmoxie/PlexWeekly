@@ -30,6 +30,7 @@ var (
 	ErrOperationInvalid        = errors.New("operation request is invalid")
 	ErrOperationNotFound       = errors.New("operation was not found")
 	ErrOperationNotReady       = errors.New("configuration is not ready for the operation")
+	ErrOperationUserExcluded   = errors.New("selected user is excluded by saved recipient policy")
 	ErrOperationTerminal       = errors.New("operation is already complete")
 	ErrOperationNotCancellable = errors.New("operation cannot be cancelled safely")
 	ErrOperationUnsupported    = errors.New("operation is unsupported on this platform")
@@ -95,6 +96,7 @@ type operationCoordinator struct {
 	dataDir     string
 	now         func() time.Time
 	runner      operationRunner
+	discovery   *tautulliDiscoveryStore
 	store       operationStore
 	current     *OperationRecord
 	cancel      context.CancelFunc
@@ -188,6 +190,9 @@ func (c *operationCoordinator) Start(request CreateOperationRequest) (OperationR
 	if request.ExpectedRevision == "" || request.ExpectedRevision != revision {
 		return OperationRecord{}, ErrConfigConflict
 	}
+	if requiresUser && (savedOperationUserExcluded(values, userID) || c.savedDiscoveryUserExcluded(revision, userID)) {
+		return OperationRecord{}, ErrOperationUserExcluded
+	}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -228,6 +233,76 @@ func (c *operationCoordinator) Start(request CreateOperationRequest) (OperationR
 	c.current = &record
 	go c.run(operationContext, record, revision, snapshotPath, resultPath, userID, previewBaseline)
 	return record, nil
+}
+
+func (c *operationCoordinator) savedDiscoveryUserExcluded(revision, userID string) bool {
+	if c.discovery == nil {
+		return false
+	}
+	discovery := c.discovery.Load(revision)
+	if discovery == nil {
+		return false
+	}
+	for _, user := range discovery.Users {
+		if user.ID == userID {
+			return user.LegacyRuleExcluded
+		}
+	}
+	return false
+}
+
+func savedOperationUserExcluded(values map[string]any, userID string) bool {
+	if configStringListContains(values["ExcludedUserIds"], userID, false) {
+		return true
+	}
+	effectiveAddress := configUserEmailOverride(values["UserEmailOverrides"], userID)
+	return effectiveAddress != "" && configStringListContains(values["ExcludedEmails"], effectiveAddress, true)
+}
+
+func configStringListContains(value any, candidate string, fold bool) bool {
+	matches := func(item any) bool {
+		text, ok := item.(string)
+		if !ok {
+			return false
+		}
+		text = strings.TrimSpace(text)
+		if fold {
+			return strings.EqualFold(text, strings.TrimSpace(candidate))
+		}
+		return text == strings.TrimSpace(candidate)
+	}
+	switch typed := value.(type) {
+	case []any:
+		for _, item := range typed {
+			if matches(item) {
+				return true
+			}
+		}
+	case []string:
+		for _, item := range typed {
+			if matches(item) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func configUserEmailOverride(value any, userID string) string {
+	var address any
+	switch typed := value.(type) {
+	case map[string]any:
+		address = typed[userID]
+	case map[string]string:
+		address = typed[userID]
+	default:
+		return ""
+	}
+	text, ok := address.(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(text)
 }
 
 func (c *operationCoordinator) run(ctx context.Context, record OperationRecord, revision, snapshotPath, resultPath, userID string, previewBaseline map[string]previewFingerprint) {

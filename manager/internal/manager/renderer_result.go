@@ -205,6 +205,7 @@ func validRendererErrorCategory(category string) bool {
 		"smtp-transport-failed",
 		"smtp-acceptance-unknown",
 		"user-roster-refresh-failed",
+		"user-excluded",
 		"no-eligible-recipients",
 		"renderer-failed":
 		return true

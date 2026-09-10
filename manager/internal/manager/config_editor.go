@@ -426,6 +426,11 @@ func classifyConfigPostSave(current, next map[string]any, existed bool) ConfigPo
 			category["recipients"] = true
 			cacheCoverageChanged = true
 			plan.GeneratePreviews = true
+			if name == "ExcludedEmails" || name == "UserEmailOverrides" {
+				// Discovery is the only sanitized source of effective-email
+				// exclusion matches. Refresh it instead of rebasing stale flags.
+				plan.RunDiscovery = true
+			}
 		case name == "DaysBack" || name == "RecentAccessDays" || name == "WatchedPercent" || name == "MaxMovies" || name == "MaxTv":
 			category["newsletter"] = true
 			cacheCoverageChanged = true

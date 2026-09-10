@@ -311,6 +311,7 @@ async function loadAll() {
     renderBackups();
     renderVerification();
     renderPreviews();
+    reconcileOperationUserSelections();
     renderOperations();
     renderSchedule();
     renderStartupSettings();
@@ -838,7 +839,7 @@ function renderDashboardGreeting(observedAtUtc) {
 }
 
 function discoveredAdministratorName() {
-  const suggestedID = String(state.discovery?.suggestedPreviewUserId || "");
+  const suggestedID = suggestedSelectablePreviewUserID();
   if (!suggestedID) return "";
   const user = discoveredNewsletterUsers().find((candidate) => String(candidate.id) === suggestedID);
   const name = String(user?.name || "").trim();
@@ -1011,6 +1012,7 @@ function rendererFailureCopy(category, supportCode) {
   switch (category) {
   case "operation-busy": return "Another newsletter, update, or scheduled-delivery operation owns the package renderer. Wait for it to finish, then retry." + suffix;
   case "configuration-invalid": return "The renderer could not load the saved configuration snapshot. Review Config, then retry." + suffix;
+  case "user-excluded": return "The selected user is excluded by the saved recipient policy. Include and save that user before retrying." + suffix;
   case "tautulli-unavailable": return "The renderer could not complete the required Tautulli data stage. Run Verify, then retry." + suffix;
   case "plex-unavailable": return "Direct Plex verification could not be completed. Review the sanitized evidence under Verify, then retry." + suffix;
   case "asset-unavailable": return "The renderer could not prepare a required local media asset. Review private data-directory access and free space, then retry." + suffix;
@@ -1234,6 +1236,51 @@ function discoveredNewsletterUsers() {
   return (state.discovery?.users || []).filter((user) => validPreviewUserID(String(user.id)));
 }
 
+function savedUserEmailOverrides() {
+  const field = (state.editor?.fields || []).find((candidate) => candidate.name === "UserEmailOverrides");
+  const value = field?.value;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).map(([id, address]) => [String(id), String(address ?? "").trim()]));
+}
+
+function userExcludedBySavedPolicy(user) {
+  const userID = String(user?.id || "");
+  if (new Set(savedListField("ExcludedUserIds")).has(userID) || user?.legacyRuleExcluded === true) return true;
+  if (user?.needsDeliveryAddress !== true) return false;
+  const effectiveAddress = String(savedUserEmailOverrides()[userID] || "").toLowerCase();
+  return effectiveAddress !== "" && new Set(savedListField("ExcludedEmails").map((address) => address.toLowerCase())).has(effectiveAddress);
+}
+
+function selectableNewsletterUsers() {
+  return discoveredNewsletterUsers().filter((user) => !userExcludedBySavedPolicy(user));
+}
+
+function validOperationUserID(value) {
+  return validPreviewUserID(value) && selectableNewsletterUsers().some((user) => String(user.id) === value);
+}
+
+function suggestedSelectablePreviewUserID() {
+  const users = selectableNewsletterUsers();
+  const owners = users.filter((user) => user.role === "owner");
+  if (owners.length === 1) return String(owners[0].id);
+  const administrators = users.filter((user) => user.role === "administrator");
+  return owners.length === 0 && administrators.length === 1 ? String(administrators[0].id) : "";
+}
+
+function reconcileOperationUserSelections() {
+  for (const [inputID, confirmationID] of [
+    ["preview-user-id", "preview-confirm"],
+    ["test-send-user-id", "test-send-confirm"],
+    ["manual-send-user-id", "manual-send-confirm"],
+  ]) {
+    const input = byId(inputID);
+    if (!input?.value.trim() || validOperationUserID(input.value.trim())) continue;
+    input.value = "";
+    const confirmation = byId(confirmationID);
+    if (confirmation) confirmation.checked = false;
+  }
+}
+
 function renderManagedUserDeliveryAddresses() {
   const card = byId("managed-user-delivery-addresses");
   const container = byId("managed-user-delivery-list");
@@ -1377,7 +1424,7 @@ function renderDiscoveryUserCount(users = discoveredNewsletterUsers()) {
 function renderUserDatalist() {
   const list = byId("tautulli-user-choices");
   list.replaceChildren();
-  for (const item of discoveredNewsletterUsers()) {
+  for (const item of selectableNewsletterUsers()) {
     const option = document.createElement("option");
     option.value = item.id;
     option.label = `${item.name} · ${titleCase(item.eligibility)}${item.role ? ` · ${titleCase(item.role)}` : ""}`;
@@ -1393,12 +1440,12 @@ function renderUserComboboxOptions(container) {
   const input = container.querySelector("input");
   const list = container.querySelector(".user-combobox-options");
   const query = container.dataset.filter === "true" ? input.value.trim().toLowerCase() : "";
-  const users = discoveredNewsletterUsers().filter((item) => !query || item.id.includes(query) || item.name.toLowerCase().includes(query));
+  const users = selectableNewsletterUsers().filter((item) => !query || item.id.includes(query) || item.name.toLowerCase().includes(query));
   list.replaceChildren();
   if (!users.length) {
     const empty = document.createElement("p");
     empty.className = "user-combobox-empty";
-    empty.textContent = state.discovery ? "No matching Tautulli user." : "Load Tautulli choices from Config to browse users.";
+    empty.textContent = state.discovery ? "No matching included Tautulli user. Save exclusion changes before selecting an excluded user." : "Load Tautulli choices from Config to browse users.";
     list.append(empty);
     return;
   }
@@ -1506,6 +1553,7 @@ async function runTautulliDiscovery(options = {}) {
     });
     if (discoveryAuthenticationEpoch !== authenticationEpoch || byId("app-shell").hidden) return false;
     state.discovery = discovery;
+    reconcileOperationUserSelections();
     refreshed = true;
     state.discoveryError = "";
     if (state.status) renderDashboardGreeting(state.status.observedAtUtc);
@@ -2180,15 +2228,15 @@ async function runPostSaveSetup(revision, plan) {
     await runCacheVerification({ automatic: true, expectedRevision: revision });
   }
 
-  const suggestedUserID = discovered?.suggestedPreviewUserId || "";
+  const suggestedUserID = suggestedSelectablePreviewUserID();
   if (plan.generatePreviews && !cacheStarted && discoveryFailed) {
     updateSetupWorkflowStep("previews", "skipped", "Preview generation was skipped because Tautulli choices could not be refreshed. Resolve the discovery result, then use Refresh Tautulli choices to continue without another save.");
     await retainSkippedPreviewStatus(revision, "discovery-failed");
   } else if (plan.generatePreviews && !cacheStarted && !discovered) {
     updateSetupWorkflowStep("previews", "skipped", "Preview generation was skipped because no retained Tautulli choices are available. Refresh Tautulli choices to continue without another save.");
     await retainSkippedPreviewStatus(revision, "choices-unavailable");
-  } else if (plan.generatePreviews && !cacheStarted && !validPreviewUserID(suggestedUserID)) {
-    updateSetupWorkflowStep("previews", "skipped", "Tautulli did not expose one unambiguous owner or administrator ID. Choose a user under Previews to generate the six local states manually.");
+  } else if (plan.generatePreviews && !cacheStarted && !validOperationUserID(suggestedUserID)) {
+    updateSetupWorkflowStep("previews", "skipped", "Tautulli did not expose one unambiguous included owner or administrator ID. Include and save a user if needed, then choose one under Previews to generate the six local states manually.");
     await retainSkippedPreviewStatus(revision, "owner-not-found");
   } else if (plan.generatePreviews && !cacheStarted && (operationIsActive(state.operation) || scheduleOperationIsActive(state.scheduleOperation))) {
     updateSetupWorkflowStep("previews", "skipped", "Another Manager or schedule operation is active. Generate previews manually after it finishes.");
@@ -2250,9 +2298,9 @@ async function recoverPendingPreviewsFromChoices(expectedAuthenticationEpoch = a
   if (expectedAuthenticationEpoch !== authenticationEpoch || byId("app-shell").hidden) return;
   const revision = state.editor?.revision || "";
   const previewState = state.setupWorkflow?.steps?.previews?.state || "not-run";
-  const suggestedUserID = state.discovery?.configRevision === revision ? state.discovery.suggestedPreviewUserId || "" : "";
+  const suggestedUserID = state.discovery?.configRevision === revision ? suggestedSelectablePreviewUserID() : "";
   if (!["not-run", "waiting", "failed", "skipped"].includes(previewState)
-      || !validPreviewUserID(suggestedUserID)
+      || !validOperationUserID(suggestedUserID)
       || operationIsActive(state.operation)
       || scheduleOperationIsActive(state.scheduleOperation)) return;
 
@@ -2950,13 +2998,13 @@ function renderOperations() {
   const manualSendType = byId("manual-send-mode").value === "send-welcome" ? "send-welcome" : "send-all";
   const manualWelcome = manualSendType === "send-welcome";
   const manualSendUserID = byId("manual-send-user-id").value.trim();
-  const manualSendUserValid = !manualWelcome || validPreviewUserID(manualSendUserID);
+  const manualSendUserValid = !manualWelcome || validOperationUserID(manualSendUserID);
   renderManualSendChoice(manualSendType);
   const userID = byId("preview-user-id").value.trim();
-  const userIDValid = validPreviewUserID(userID);
+  const userIDValid = validOperationUserID(userID);
   const confirmed = byId("preview-confirm").checked;
   const testUserID = byId("test-send-user-id").value.trim();
-  const testUserIDValid = validPreviewUserID(testUserID);
+  const testUserIDValid = validOperationUserID(testUserID);
   const testConfirmed = byId("test-send-confirm").checked;
   const manualSendConfirmed = byId("manual-send-confirm").checked;
   const ready = state.editor?.state === "ready";
@@ -2969,7 +3017,7 @@ function renderOperations() {
   else if (active) message = operation.type === "preview-all" ? (operation.state === "cancelling" ? "Stopping the local preview process safely..." : "Generating previews. You can leave this page while the Manager tracks the operation.") : operation.type === "cache-warm" ? "Refreshing deleted-item cache coverage locally. No email is sent." : "An email delivery is active. Wait for its aggregate SMTP result before starting another operation.";
   else if (scheduleActive) message = "Wait for the active schedule change before generating previews.";
   else if (state.operationStarting) message = "Starting a fixed Manager operation...";
-  else if (!userIDValid && userID) message = "Enter a numeric Tautulli user ID using no more than 20 digits.";
+  else if (!userIDValid && userID) message = validPreviewUserID(userID) ? "Choose an included user from the saved Tautulli choices. Save exclusion changes before using an excluded user." : "Enter a numeric Tautulli user ID using no more than 20 digits.";
   else if (userIDValid && confirmed) message = "Ready to generate six local previews without sending email.";
   setText("preview-operation-message", message);
 
@@ -2981,7 +3029,7 @@ function renderOperations() {
   else if (active) testMessage = operation.type === "send-test-all" ? "Sending to the configured TestEmail. Cancellation is disabled because some messages may already be accepted by SMTP." : "Another Manager operation is active. Wait for it to finish before starting a test delivery.";
   else if (scheduleActive) testMessage = "Wait for the active schedule change before starting a test delivery.";
   else if (state.operationStarting) testMessage = "Starting a fixed Manager operation...";
-  else if (!testUserIDValid && testUserID) testMessage = "Enter a numeric Tautulli user ID using no more than 20 digits.";
+  else if (!testUserIDValid && testUserID) testMessage = validPreviewUserID(testUserID) ? "Choose an included user from the saved Tautulli choices. Save exclusion changes before using an excluded user." : "Enter a numeric Tautulli user ID using no more than 20 digits.";
   else if (testUserIDValid && testConfirmed) testMessage = "Ready to send six real messages only to the configured TestEmail.";
   setText("test-send-operation-message", testMessage);
 
@@ -2994,7 +3042,7 @@ function renderOperations() {
   else if (active) manualSendMessage = ["send-welcome", "send-all"].includes(operation.type) ? "A production delivery is running. Cancellation is disabled because a message may already be accepted by SMTP." : "Another Manager operation is active. Wait for it to finish before sending a production newsletter.";
   else if (scheduleActive) manualSendMessage = "Wait for the active schedule change before sending a production newsletter.";
   else if (state.operationStarting) manualSendMessage = "Starting a fixed Manager operation...";
-  else if (manualWelcome && manualSendUserID && !manualSendUserValid) manualSendMessage = "Enter a numeric Tautulli user ID using no more than 20 digits.";
+  else if (manualWelcome && manualSendUserID && !manualSendUserValid) manualSendMessage = validPreviewUserID(manualSendUserID) ? "Choose an included user from the saved Tautulli choices. Save exclusion changes before sending a Manual Welcome." : "Enter a numeric Tautulli user ID using no more than 20 digits.";
   else if (manualSendConfirmed && manualSendUserValid) manualSendMessage = manualWelcome ? "Ready to send one real Manual Welcome message to the selected user." : "Ready to send real email to every currently eligible recipient.";
   setText("manual-send-operation-message", manualSendMessage);
 
@@ -3221,7 +3269,7 @@ function validPreviewUserID(value) {
 
 async function startPreviewOperation() {
   const userID = byId("preview-user-id").value.trim();
-  if (state.editor?.state !== "ready" || !byId("preview-confirm").checked || !validPreviewUserID(userID)) return;
+  if (state.editor?.state !== "ready" || !byId("preview-confirm").checked || !validOperationUserID(userID)) return;
   state.operationStarting = true;
   state.operationStartingType = "preview-all";
   renderOperations();
@@ -3251,7 +3299,7 @@ async function startPreviewOperation() {
 
 async function startTestSendOperation() {
   const userID = byId("test-send-user-id").value.trim();
-  if (state.editor?.state !== "ready" || !byId("test-send-confirm").checked || !validPreviewUserID(userID)) return;
+  if (state.editor?.state !== "ready" || !byId("test-send-confirm").checked || !validOperationUserID(userID)) return;
   state.operationStarting = true;
   state.operationStartingType = "send-test-all";
   renderOperations();
@@ -3277,7 +3325,7 @@ async function startTestSendOperation() {
 async function startManualSendOperation() {
   const type = byId("manual-send-mode").value === "send-welcome" ? "send-welcome" : "send-all";
   const userID = byId("manual-send-user-id").value.trim();
-  if (state.editor?.state !== "ready" || !byId("manual-send-confirm").checked || (type === "send-welcome" && !validPreviewUserID(userID))) return;
+  if (state.editor?.state !== "ready" || !byId("manual-send-confirm").checked || (type === "send-welcome" && !validOperationUserID(userID))) return;
   state.operationStarting = true;
   state.operationStartingType = type;
   renderOperations();

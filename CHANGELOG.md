@@ -6,6 +6,13 @@ the structure of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.26.2] - 2026-09-09
+
+### Fixed
+
+- Enforce saved stable-ID and effective-address user exclusions before every personalized Preview, PreviewAll, TestEmail, TestEmail All, Manual Welcome, and SendAll operation. Manager filters operation selectors to included saved users, its backend rejects excluded identities, and each maintained renderer independently fails closed before generating or sending for one.
+- Keep included managed users without a production address available for safe preview and TestEmail sampling. Test messages remain isolated to `TestEmail`, while unsaved exclusion edits take effect only after a successful configuration save.
+
 ## [0.26.1] - 2026-09-09
 
 ### Fixed

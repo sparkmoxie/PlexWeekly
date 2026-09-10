@@ -966,6 +966,40 @@ func TestPreviewOperationAPIsRequireCSRFAndReturnOnlySanitizedRecords(t *testing
 	}
 }
 
+func TestUserExcludedOperationAPIReturnsOnlySavedPolicyGuidance(t *testing.T) {
+	root := integrationConfigRoot(t, "http://127.0.0.1:8181", "operation-api-secret", "", "")
+	const privateUserID = "9876543210123456789"
+	setIntegrationConfigValues(t, root, map[string]any{"ExcludedUserIds": []string{privateUserID}})
+	server, err := New(Options{
+		DataDir:         t.TempDir(),
+		TautWeeklyRoot:  root,
+		Version:         "test",
+		operationRunner: &fixturePreviewRunner{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := server.auth.newSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cookie := &http.Cookie{Name: sessionCookieName, Value: current.Token}
+	body, err := json.Marshal(CreateOperationRequest{
+		Type:             "preview-all",
+		ExpectedRevision: ReadConfigEditor(root).Revision,
+		UserID:           privateUserID,
+		ConfirmNoSend:    true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := mutationRequestForTest(server, http.MethodPost, "/api/v1/operations", body, cookie, current.CSRFToken)
+	if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), `"code":"operation-user-excluded"`) || !strings.Contains(response.Body.String(), "saved recipient policy") {
+		t.Fatalf("excluded operation response: got %d, body %s", response.Code, response.Body.String())
+	}
+	assertOperationResponseSanitized(t, response.Body.String(), privateUserID)
+}
+
 func TestSendTestAllOperationAPIRequiresExplicitConfirmationAndReturnsOnlyAggregateDeliveryEvidence(t *testing.T) {
 	root := integrationConfigRoot(t, "http://127.0.0.1:8181", "operation-api-secret", "", "")
 	server, err := New(Options{

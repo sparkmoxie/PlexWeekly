@@ -307,7 +307,9 @@ sudo tautweekly update                verify and install the latest stable packa
 The backup command briefly stops an active service for a consistent snapshot
 and restores its previous running state afterward.
 
-Preview and TestEmail commands may use an excluded user as sample data.
+Saved exclusions block a user from preview, TestEmail, welcome, and manual or
+scheduled SendAll modes. An included user without a production address can
+still be sampled; TestEmail sends only to its configured test inbox.
 
 Manager Config (or the `manage-libraries` expert fallback) discovers active
 movie/TV libraries through Tautulli and saves stable section IDs in
@@ -315,8 +317,8 @@ movie/TV libraries through Tautulli and saves stable section IDs in
 applied before releases, quiet mode, Trending, Binge Champion, and personal
 statistics are calculated. The manager backs up the private config before
 writing; empty/absent IDs retain legacy all-library behavior.
-Exclusions apply to scheduled and confirmed `SendAll` delivery. One-off welcome
-mail is a separate, explicit administrator action.
+One-off welcome mail remains a separate, explicit administrator action, but it
+enforces the same saved user exclusion policy as every other personalized mode.
 
 Manager's **Repeat this Tautulli lookup** updates only its displayed choices.
 Every manual or scheduled SendAll performs one bounded Tautulli/Plex user-list

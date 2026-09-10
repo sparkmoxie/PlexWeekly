@@ -503,8 +503,8 @@ func TestTautulliDiscoveryReturnsSanitizedChoicesWithoutEmailOrSecrets(t *testin
 	if len(result.Libraries) != 2 || result.Libraries[0].ID != "10" || len(result.Users) != 4 {
 		t.Fatalf("unexpected discovery result: %+v", result)
 	}
-	if result.SuggestedPreviewUserID != "1" || result.Users[0].Role != "administrator" {
-		t.Fatalf("explicit administrator was not selected safely: %+v", result)
+	if result.SuggestedPreviewUserID != "" || result.Users[0].Role != "administrator" {
+		t.Fatalf("legacy-excluded administrator was suggested for preview: %+v", result)
 	}
 	if result.Users[0].Eligibility != "eligible" || result.Users[1].Eligibility != "unknown" || result.Users[1].ID != "1234567890123456789" || result.Users[2].Eligibility != "address-needed" || !result.Users[2].NeedsDeliveryAddress || result.Users[3].Eligibility != "skipped" || result.Users[3].NeedsDeliveryAddress {
 		t.Fatalf("unexpected eligibility normalization: %+v", result.Users)
@@ -641,6 +641,8 @@ func TestSuggestedPreviewUserIDRequiresOneExplicitRole(t *testing.T) {
 	}{
 		{name: "no inferred role", users: []DiscoveredUser{{ID: "1", Name: "Owner-like name"}}},
 		{name: "one administrator", users: []DiscoveredUser{{ID: "1", Role: "administrator"}}, want: "1"},
+		{name: "legacy-excluded administrator", users: []DiscoveredUser{{ID: "1", Role: "administrator", LegacyRuleExcluded: true}}},
+		{name: "included administrator after excluded owner", users: []DiscoveredUser{{ID: "1", Role: "owner", LegacyRuleExcluded: true}, {ID: "2", Role: "administrator"}}, want: "2"},
 		{name: "ambiguous administrators", users: []DiscoveredUser{{ID: "1", Role: "administrator"}, {ID: "2", Role: "administrator"}}},
 		{name: "owner preferred", users: []DiscoveredUser{{ID: "1", Role: "administrator"}, {ID: "2", Role: "owner"}}, want: "2"},
 		{name: "ambiguous owners", users: []DiscoveredUser{{ID: "1", Role: "owner"}, {ID: "2", Role: "owner"}, {ID: "3", Role: "administrator"}}},
@@ -651,6 +653,23 @@ func TestSuggestedPreviewUserIDRequiresOneExplicitRole(t *testing.T) {
 				t.Fatalf("suggestedPreviewUserID() = %q, want %q", got, test.want)
 			}
 		})
+	}
+}
+
+func TestDiscoveryMatchesLegacyRulesAgainstEffectiveFallbackOnly(t *testing.T) {
+	names := []map[string]any{{"user_id": "1", "friendly_name": "Synthetic Managed"}, {"user_id": "2", "friendly_name": "Synthetic Native"}}
+	details := []map[string]any{
+		{"user_id": "1", "friendly_name": "Synthetic Managed", "email": "", "is_active": float64(1), "is_admin": float64(1)},
+		{"user_id": "2", "friendly_name": "Synthetic Native", "email": "native@example.org", "is_active": float64(1), "is_owner": float64(1)},
+	}
+	legacy := map[string]struct{}{"fallback@example.org": {}, "must-not-reroute@example.org": {}}
+	overrides := map[string]string{"1": "fallback@example.org", "2": "must-not-reroute@example.org"}
+	users, matched := normalizeDiscoveredUsers(names, details, legacy, overrides)
+	if matched != 1 || len(users) != 2 || !users[0].LegacyRuleExcluded || users[1].LegacyRuleExcluded {
+		t.Fatalf("effective fallback exclusion or native-email precedence was lost: users=%+v matched=%d", users, matched)
+	}
+	if users[0].Eligibility != "address-needed" || !users[0].NeedsDeliveryAddress || users[1].Eligibility != "eligible" {
+		t.Fatalf("preview sampling eligibility was coupled to production address policy: %+v", users)
 	}
 }
 
