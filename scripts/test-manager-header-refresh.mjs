@@ -185,6 +185,7 @@ function createHarness({
     renderDiscoveredLibraries() { events.push("libraries:render"); },
     renderDiscoveredUsers() { events.push("discovered-users:render"); },
     renderManagedUserDeliveryAddresses() { events.push("managed-users:render"); },
+    reconcileOperationUserSelections() { events.push("operation-users:reconcile"); },
     setGlobalStatus(message, persistent) { globalStatuses.push({ message, persistent }); },
     byId(id) {
       if (id === "update-settings-message") return updateMessage;
@@ -308,6 +309,7 @@ async function flushAsyncWork() {
   assert.deepEqual(harness.requests[0].payload, { expectedRevision: configuredRevision, confirmRealNetwork: true });
   assert.equal(harness.discoveryConfirm.checked, false, "successful dedicated discovery retained stale confirmation");
   assert.equal(harness.globalStatuses.at(-1).message, "Tautulli choices loaded and retained locally.");
+  assert.equal(harness.events.includes("operation-users:reconcile"), true, "successful discovery did not reconcile saved-policy operation choices");
   assert.equal(harness.events.includes("previews:recover"), true, "dedicated discovery lost setup-preview recovery");
 }
 
